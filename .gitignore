@@ -1,0 +1,23 @@
+# Build output
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Test scratch
+TestResults/
+*.trx
+*.coverage
+
+# Generated fixtures (large; produced by tools/make-fixtures.sh)
+fixtures/generated/
+*.dmg.tmp
+*.vhd
+*.vhdx
+
+# OS noise
+.DS_Store
+Thumbs.db

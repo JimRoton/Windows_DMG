@@ -1,0 +1,803 @@
+<title>Mounting DMG on Windows</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{
+  --bg:#EFF2F5;
+  --surface:#FFFFFF;
+  --surface-2:#F5F8FA;
+  --ink:#131A22;
+  --ink-2:#4C5A69;
+  --ink-3:#78889A;
+  --rule:#D3DBE3;
+  --rule-strong:#B2BFCC;
+  --accent:#2C5AA0;
+  --accent-soft:#E4ECF8;
+  --ok:#357049;
+  --ok-soft:#E1EFE6;
+  --warn:#916210;
+  --warn-soft:#F7EDD8;
+  --stop:#9C3A34;
+  --stop-soft:#F7E4E2;
+  --disp:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --measure:34rem;
+  --wide:62rem;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1319;
+    --surface:#161D25;
+    --surface-2:#1B232C;
+    --ink:#DEE6EE;
+    --ink-2:#95A4B4;
+    --ink-3:#6C7C8D;
+    --rule:#27313C;
+    --rule-strong:#3A4753;
+    --accent:#82AAE9;
+    --accent-soft:#192637;
+    --ok:#65AE80;
+    --ok-soft:#15281D;
+    --warn:#D4A74E;
+    --warn-soft:#2A2214;
+    --stop:#D5746E;
+    --stop-soft:#2C1A18;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1319;
+  --surface:#161D25;
+  --surface-2:#1B232C;
+  --ink:#DEE6EE;
+  --ink-2:#95A4B4;
+  --ink-3:#6C7C8D;
+  --rule:#27313C;
+  --rule-strong:#3A4753;
+  --accent:#82AAE9;
+  --accent-soft:#192637;
+  --ok:#65AE80;
+  --ok-soft:#15281D;
+  --warn:#D4A74E;
+  --warn-soft:#2A2214;
+  --stop:#D5746E;
+  --stop-soft:#2C1A18;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--body);
+  font-size:17px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.page{max-width:var(--wide);margin:0 auto;padding:0 1.5rem 6rem}
+.col{max-width:var(--measure);margin-inline:auto}
+
+/* ---- masthead ---- */
+.mast{padding:3.5rem 0 0}
+.eyebrow{
+  font-family:var(--mono);font-size:.7rem;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+  margin:0 0 1.1rem;
+}
+h1{
+  font-family:var(--disp);font-weight:700;font-size:clamp(2.1rem,5.2vw,3.1rem);
+  line-height:1.04;letter-spacing:-.022em;margin:0 0 1rem;text-wrap:balance;
+}
+.standfirst{font-size:1.15rem;color:var(--ink-2);margin:0;text-wrap:pretty}
+.mast-rule{border:0;border-top:2px solid var(--ink);opacity:.85;margin:2.4rem 0 0}
+
+/* ---- verdict ---- */
+.verdicts{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(19rem,1fr));
+  gap:1px;background:var(--rule);border-bottom:1px solid var(--rule);
+}
+.vd{background:var(--bg);padding:1.6rem 0 1.9rem}
+.verdicts .vd{padding-inline:1.5rem}
+.verdicts .vd:first-child{padding-left:0}
+.vd-q{
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 .55rem;
+}
+.vd-a{font-family:var(--disp);font-weight:600;font-size:1.18rem;line-height:1.3;margin:0 0 .5rem;letter-spacing:-.01em}
+.vd-a em{font-style:normal;color:var(--accent)}
+.vd p{margin:0;font-size:.95rem;color:var(--ink-2);line-height:1.55}
+
+/* ---- sections ---- */
+section{padding-top:3.4rem}
+.sec-head{max-width:var(--measure);margin-inline:auto;margin-bottom:1.4rem}
+.sec-n{
+  font-family:var(--mono);font-size:.72rem;font-weight:500;color:var(--accent);
+  letter-spacing:.08em;display:block;margin-bottom:.4rem;
+}
+h2{
+  font-family:var(--disp);font-weight:600;font-size:1.62rem;line-height:1.18;
+  letter-spacing:-.017em;margin:0;text-wrap:balance;
+}
+h3{
+  font-family:var(--disp);font-weight:600;font-size:1.09rem;letter-spacing:-.005em;
+  margin:2.1rem 0 .55rem;text-wrap:balance;
+}
+h4{
+  font-family:var(--mono);font-weight:600;font-size:.78rem;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-2);margin:1.9rem 0 .5rem;
+}
+p{margin:0 0 1rem}
+.col>p:last-child{margin-bottom:0}
+a{color:var(--accent)}
+strong{font-weight:600}
+code{
+  font-family:var(--mono);font-size:.85em;background:var(--surface-2);
+  border:1px solid var(--rule);border-radius:3px;padding:.08em .32em;
+  color:var(--ink);white-space:nowrap;
+}
+ul,ol{margin:0 0 1rem;padding-left:1.25rem}
+li{margin-bottom:.42rem}
+li::marker{color:var(--ink-3)}
+
+/* ---- route blocks ---- */
+.route{
+  max-width:var(--measure);margin:1.6rem auto;padding:1.3rem 1.4rem;
+  background:var(--surface);border:1px solid var(--rule);
+  border-left:3px solid var(--rule-strong);
+}
+.route.pick{border-left-color:var(--accent)}
+.route-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:.6rem;margin-bottom:.7rem}
+.route-h h3{margin:0;font-size:1.05rem}
+.route p{margin-bottom:.7rem;font-size:.98rem}
+.route p:last-child,.route ul:last-child{margin-bottom:0}
+.route ul{font-size:.98rem}
+.tag{
+  font-family:var(--mono);font-size:.66rem;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;padding:.2em .55em;border-radius:2px;white-space:nowrap;
+}
+.tag-pick{background:var(--accent-soft);color:var(--accent)}
+.tag-ok{background:var(--ok-soft);color:var(--ok)}
+.tag-warn{background:var(--warn-soft);color:var(--warn)}
+.tag-stop{background:var(--stop-soft);color:var(--stop)}
+
+/* ---- layer stack ---- */
+.layers{max-width:var(--measure);margin:1.5rem auto 0;display:flex;flex-direction:column;gap:1px;background:var(--rule)}
+.ly{background:var(--surface);display:grid;grid-template-columns:3.4rem 1fr;gap:.9rem;padding:.85rem 1rem}
+.ly-n{font-family:var(--mono);font-size:.78rem;font-weight:600;color:var(--accent);padding-top:.15rem}
+.ly-t{font-family:var(--disp);font-weight:600;font-size:.98rem;margin:0 0 .18rem}
+.ly-d{margin:0;font-size:.93rem;color:var(--ink-2);line-height:1.5}
+.seam{
+  background:var(--accent-soft);display:grid;grid-template-columns:3.4rem 1fr;gap:.9rem;
+  padding:.7rem 1rem;
+}
+.seam-n{font-family:var(--mono);font-size:.78rem;font-weight:600;color:var(--accent)}
+.seam p{margin:0;font-size:.9rem;color:var(--ink-2);font-family:var(--mono);line-height:1.5}
+.seam strong{color:var(--accent);font-weight:600}
+
+/* ---- tables ---- */
+.tw{max-width:var(--wide);margin:1.5rem auto;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem;font-family:var(--mono);min-width:34rem}
+caption{
+  caption-side:top;text-align:left;font-family:var(--mono);font-size:.72rem;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
+  padding-bottom:.6rem;
+}
+th{
+  text-align:left;font-weight:600;font-size:.7rem;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-2);border-bottom:1.5px solid var(--rule-strong);
+  padding:.45rem .7rem;white-space:nowrap;
+}
+td{padding:.5rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2)}
+td:first-child{color:var(--ink);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+.num{font-variant-numeric:tabular-nums}
+.y{color:var(--ok);font-weight:600}
+.n{color:var(--stop);font-weight:600}
+.m{color:var(--warn);font-weight:600}
+
+/* ---- figures ---- */
+figure{max-width:var(--wide);margin:2.1rem auto;padding:0}
+.dg{display:block;max-width:100%;height:auto;margin-inline:auto}
+figcaption{
+  max-width:var(--measure);margin:1rem auto 0;font-size:.87rem;color:var(--ink-2);
+  line-height:1.5;text-align:left;
+}
+figcaption b{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500;display:block;margin-bottom:.3rem}
+.legend{
+  display:flex;flex-wrap:wrap;gap:1.1rem;justify-content:center;margin:.9rem auto 0;
+  font-family:var(--mono);font-size:.72rem;color:var(--ink-2);
+}
+.legend span{display:flex;align-items:center;gap:.42rem}
+.sw{width:.85rem;height:.85rem;border:1.25px solid var(--rule-strong);background:var(--surface);flex:none}
+.sw-sup{border-style:dashed;background:var(--surface-2)}
+.sw-you{border-color:var(--accent);background:var(--accent-soft)}
+.sw-krn{border-color:var(--warn);background:var(--warn-soft)}
+
+.dg .bx{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.25}
+.dg .bx-sup{fill:var(--surface-2);stroke:var(--rule-strong);stroke-width:1.25;stroke-dasharray:5 4}
+.dg .bx-you{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.25}
+.dg .bx-krn{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.25}
+.dg .bx-gh{fill:none;stroke:var(--rule);stroke-width:1.25;stroke-dasharray:3 5}
+.dg .t{fill:var(--ink);font-family:var(--mono);font-size:12.5px;font-weight:500}
+.dg .ts{fill:var(--ink-2);font-family:var(--mono);font-size:10.5px}
+.dg .lbl{fill:var(--ink-2);font-family:var(--mono);font-size:11px}
+.dg .lbl-a{fill:var(--accent);font-family:var(--mono);font-size:11px;font-weight:500}
+.dg .band{fill:var(--ink-3);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em}
+.dg .ln{stroke:var(--ink-2);stroke-width:1.25;fill:none}
+.dg .ln-a{stroke:var(--accent);stroke-width:1.6;fill:none}
+.dg .ln-d{stroke:var(--rule-strong);stroke-width:1.25;fill:none;stroke-dasharray:4 5}
+.dg .hd{fill:var(--ink-2)}
+.dg .hd-a{fill:var(--accent)}
+.dg .colhd{fill:var(--ink);font-family:var(--disp);font-size:13px;font-weight:600}
+
+/* ---- callout ---- */
+.note{
+  max-width:var(--measure);margin:1.6rem auto;padding:1.05rem 1.2rem;
+  background:var(--surface-2);border:1px solid var(--rule);border-top:2px solid var(--accent);
+  font-size:.96rem;
+}
+.note p{margin:0}
+.note p+p{margin-top:.6rem}
+.note .nh{
+  font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.4rem;font-weight:600;
+}
+.note.risk{border-top-color:var(--stop)}
+.note.risk .nh{color:var(--stop)}
+
+/* ---- milestones ---- */
+.ms{max-width:var(--measure);margin:1.4rem auto 0;border-left:1.5px solid var(--rule-strong);padding-left:0}
+.ms-i{display:grid;grid-template-columns:3.2rem 1fr;gap:.8rem;padding:.75rem 0 .75rem .9rem;border-bottom:1px solid var(--rule)}
+.ms-i:last-child{border-bottom:0}
+.ms-n{font-family:var(--mono);font-size:.75rem;font-weight:600;color:var(--accent);padding-top:.2rem}
+.ms-t{font-family:var(--disp);font-weight:600;font-size:.97rem;margin:0 0 .15rem}
+.ms-d{margin:0;font-size:.92rem;color:var(--ink-2);line-height:1.5}
+.ms-i.ship .ms-n{color:var(--ok)}
+
+footer{max-width:var(--measure);margin:4rem auto 0;padding-top:1.5rem;border-top:1px solid var(--rule);font-size:.85rem;color:var(--ink-3);font-family:var(--mono);line-height:1.7}
+footer a{color:var(--ink-2)}
+
+@media (prefers-reduced-motion:no-preference){a{transition:color .15s}}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:640px){
+  body{font-size:16px}
+  .verdicts .vd{padding-inline:0}
+  .verdicts{gap:0;background:none;border-bottom:0}
+  .vd{border-bottom:1px solid var(--rule)}
+}
+</style>
+
+<div class="page">
+
+<header class="mast">
+  <div class="col">
+    <p class="eyebrow">Design study &middot; 9 September 2026</p>
+    <h1>Mounting DMG on Windows</h1>
+    <p class="standfirst">A feasibility assessment and layered architecture for reading &mdash; and, conditionally, writing &mdash; Apple UDIF disk images from Windows, either as a real drive letter or as a standalone application.</p>
+  </div>
+  <hr class="mast-rule">
+</header>
+
+<div class="col">
+  <div class="verdicts">
+    <div class="vd">
+      <p class="vd-q">Q1 &middot; A virtual drive</p>
+      <p class="vd-a"><em>Yes</em> &mdash; three viable routes, and the cheapest needs no driver you write yourself.</p>
+      <p>Windows will hand you a drive letter through a user-mode filesystem (WinFsp), through its own VHD stack, or through a kernel storage miniport. Only the third requires code signing and kernel risk.</p>
+    </div>
+    <div class="vd">
+      <p class="vd-q">Q2 &middot; An application</p>
+      <p class="vd-a"><em>Yes</em> &mdash; and it is the same engine with a different head.</p>
+      <p>The container format is already parsed today by 7&#8209;Zip, <code>dmg2img</code>, QEMU and others. A browser app is the low-risk first deliverable; the mount is a presentation layer on top of it.</p>
+    </div>
+  </div>
+</div>
+
+<section id="premise">
+  <div class="sec-head">
+    <span class="sec-n">&sect;1</span>
+    <h2>One correction to the premise before anything else</h2>
+  </div>
+  <div class="col">
+    <p>The hard part of a DMG is not the filesystem. It is the <strong>container</strong>. A <code>.dmg</code> is a wrapper &mdash; Apple's Universal Disk Image Format &mdash; that holds a compressed, chunked copy of a disk's sectors. Before any filesystem question arises you have to reconstruct that sector stream, and that is where the real work lives.</p>
+    <p>Second, "Apple proprietary filesystem" is not the wall it sounds like. HFS+ has been publicly specified by Apple since 2004 (Technical Note TN1150) and has been implemented openly many times over. APFS has a published Apple reference too. Both are <em>readable</em>. What is genuinely hard is <strong>writing</strong> to them &mdash; and that difficulty is independent of Windows.</p>
+    <p>Third, and this one matters for scope: the exFAT assumption is a fair simplification but it is not what you will actually meet. Disk images downloaded from the internet are overwhelmingly <strong>HFS+</strong>, because that is what application installers ship as. A tool that only handles exFAT will open almost nothing you find in the wild. Design for HFS+ read from the start, and treat exFAT as the case where writing becomes tractable.</p>
+  </div>
+  <div class="note">
+    <p class="nh">Where the difficulty actually sits</p>
+    <p>Reading the container: <strong>solved, well-understood, a few thousand lines.</strong> Reading HFS+ or APFS: <strong>solved, but detail-heavy.</strong> Writing into a compressed container: <strong>mechanically awkward but bounded.</strong> Writing into HFS+ or APFS: <strong>the only genuinely dangerous part of this project</strong> &mdash; and the one place the design below deliberately refuses to go.</p>
+  </div>
+</section>
+
+<section id="drive">
+  <div class="sec-head">
+    <span class="sec-n">&sect;2</span>
+    <h2>Question 1 &mdash; can Windows show a DMG as a drive?</h2>
+  </div>
+  <div class="col">
+    <p>It can, in three different ways. They differ in one respect that governs everything else: <strong>who implements the filesystem</strong>. If you implement it, you can support HFS+ and APFS but you write far more code. If Windows implements it, you write almost nothing but you are limited to filesystems Windows already knows.</p>
+  </div>
+
+  <figure>
+    <svg class="dg" viewBox="0 0 1000 476" role="img" aria-label="Three ways to expose a DMG as a Windows drive, compared band by band: WinFsp puts your code in user mode above a supplied kernel driver; the VHD shim converts the image so Windows' own storage and filesystem drivers do all the work; a virtual SCSI miniport puts your code in the kernel.">
+      <defs>
+        <marker id="a2h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" class="hd"/>
+        </marker>
+      </defs>
+
+      <text x="40" y="20" class="band">ROUTE A</text>
+      <text x="360" y="20" class="band">ROUTE B</text>
+      <text x="680" y="20" class="band">ROUTE C</text>
+      <text x="40" y="42" class="colhd">WinFsp filesystem</text>
+      <text x="360" y="42" class="colhd">VHD shim</text>
+      <text x="680" y="42" class="colhd">Virtual SCSI disk</text>
+
+      <!-- band 1 : Explorer -->
+      <rect x="40"  y="64" width="280" height="52" class="bx-sup"/>
+      <rect x="360" y="64" width="280" height="52" class="bx-sup"/>
+      <rect x="680" y="64" width="280" height="52" class="bx-sup"/>
+      <text x="180" y="95" class="t" text-anchor="middle">Explorer &middot; any app</text>
+      <text x="500" y="95" class="t" text-anchor="middle">Explorer &middot; any app</text>
+      <text x="820" y="95" class="t" text-anchor="middle">Explorer &middot; any app</text>
+
+      <line x1="180" y1="116" x2="180" y2="140" class="ln" marker-end="url(#a2h)"/>
+      <line x1="500" y1="116" x2="500" y2="140" class="ln" marker-end="url(#a2h)"/>
+      <line x1="820" y1="116" x2="820" y2="140" class="ln" marker-end="url(#a2h)"/>
+
+      <!-- band 2 : filesystem -->
+      <rect x="40"  y="144" width="280" height="60" class="bx-you"/>
+      <rect x="360" y="144" width="280" height="60" class="bx-sup"/>
+      <rect x="680" y="144" width="280" height="60" class="bx-sup"/>
+      <text x="180" y="169" class="t" text-anchor="middle">Your filesystem logic</text>
+      <text x="180" y="188" class="ts" text-anchor="middle">HFS+ &middot; APFS &middot; exFAT &middot; user mode</text>
+      <text x="500" y="169" class="t" text-anchor="middle">Windows exFAT driver</text>
+      <text x="500" y="188" class="ts" text-anchor="middle">exFAT / FAT / NTFS only</text>
+      <text x="820" y="169" class="t" text-anchor="middle">Windows exFAT driver</text>
+      <text x="820" y="188" class="ts" text-anchor="middle">exFAT / FAT / NTFS only</text>
+
+      <line x1="180" y1="204" x2="180" y2="228" class="ln" marker-end="url(#a2h)"/>
+      <line x1="500" y1="204" x2="500" y2="228" class="ln" marker-end="url(#a2h)"/>
+      <line x1="820" y1="204" x2="820" y2="228" class="ln" marker-end="url(#a2h)"/>
+
+      <!-- band 3 : block device -->
+      <rect x="40"  y="232" width="280" height="60" class="bx-gh"/>
+      <rect x="360" y="232" width="280" height="60" class="bx-sup"/>
+      <rect x="680" y="232" width="280" height="60" class="bx-krn"/>
+      <text x="180" y="258" class="ts" text-anchor="middle">no block layer needed &mdash;</text>
+      <text x="180" y="275" class="ts" text-anchor="middle">WinFsp mounts a filesystem</text>
+      <text x="500" y="257" class="t" text-anchor="middle">Windows VHD stack</text>
+      <text x="500" y="276" class="ts" text-anchor="middle">Mount-DiskImage</text>
+      <text x="820" y="257" class="t" text-anchor="middle">Your kernel miniport</text>
+      <text x="820" y="276" class="ts" text-anchor="middle">EV cert + attestation signing</text>
+
+      <line x1="180" y1="292" x2="180" y2="316" class="ln-d"/>
+      <line x1="500" y1="292" x2="500" y2="316" class="ln" marker-end="url(#a2h)"/>
+      <line x1="820" y1="292" x2="820" y2="316" class="ln" marker-end="url(#a2h)"/>
+
+      <!-- band 4 : decoder -->
+      <rect x="40"  y="320" width="280" height="60" class="bx-you"/>
+      <rect x="360" y="320" width="280" height="60" class="bx-you"/>
+      <rect x="680" y="320" width="280" height="60" class="bx-you"/>
+      <text x="180" y="345" class="t" text-anchor="middle">UDIF decoder</text>
+      <text x="180" y="364" class="ts" text-anchor="middle">live, on demand</text>
+      <text x="500" y="345" class="t" text-anchor="middle">UDIF decoder</text>
+      <text x="500" y="364" class="ts" text-anchor="middle">one-shot: writes a .vhd first</text>
+      <text x="820" y="345" class="t" text-anchor="middle">UDIF decoder</text>
+      <text x="820" y="364" class="ts" text-anchor="middle">live, on demand</text>
+
+      <line x1="180" y1="380" x2="180" y2="404" class="ln" marker-end="url(#a2h)"/>
+      <line x1="500" y1="380" x2="500" y2="404" class="ln" marker-end="url(#a2h)"/>
+      <line x1="820" y1="380" x2="820" y2="404" class="ln" marker-end="url(#a2h)"/>
+
+      <!-- band 5 : file -->
+      <rect x="40"  y="408" width="280" height="42" class="bx"/>
+      <rect x="360" y="408" width="280" height="42" class="bx"/>
+      <rect x="680" y="408" width="280" height="42" class="bx"/>
+      <text x="180" y="434" class="t" text-anchor="middle">image.dmg</text>
+      <text x="500" y="434" class="t" text-anchor="middle">image.dmg</text>
+      <text x="820" y="434" class="t" text-anchor="middle">image.dmg</text>
+
+      <text x="180" y="468" class="lbl" text-anchor="middle">any filesystem &middot; most code</text>
+      <text x="500" y="468" class="lbl" text-anchor="middle">least code &middot; needs disk space</text>
+      <text x="820" y="468" class="lbl" text-anchor="middle">raw sector access &middot; most cost</text>
+    </svg>
+    <div class="legend">
+      <span><i class="sw sw-sup"></i>Windows or WinFsp supplies it</span>
+      <span><i class="sw sw-you"></i>You build it &mdash; user mode</span>
+      <span><i class="sw sw-krn"></i>You build it &mdash; kernel mode</span>
+    </div>
+    <figcaption><b>Figure 1</b> The three routes differ in where your code sits relative to the filesystem. Route A buys filesystem freedom at the cost of implementing one; Route B borrows Windows' filesystem drivers and pays for it in disk space and format coverage; Route C is Route B with a kernel driver instead of a file on disk, and buys only raw sector access for the price of a signing regime.</figcaption>
+  </figure>
+
+  <div class="route pick">
+    <div class="route-h"><h3>Route A &mdash; WinFsp user-mode filesystem</h3><span class="tag tag-pick">Recommended engine</span></div>
+    <p>WinFsp is FUSE for Windows: a signed kernel filesystem driver that ships with the project, plus a DLL you link against to write the actual filesystem as an ordinary user-mode service. You get a real drive letter or a UNC path. Dokany is the equivalent alternative.</p>
+    <ul>
+      <li><strong>You write no kernel code and sign nothing.</strong> A bug in your parser crashes a user-mode service, not the machine.</li>
+      <li><strong>You can support HFS+ and APFS</strong> &mdash; the only route that can, since Windows has no driver for either.</li>
+      <li>Nothing is extracted to disk; reads are served on demand from the compressed image.</li>
+      <li><strong>Licence check needed.</strong> WinFsp is GPLv3 with an exception for free and open-source software, with a commercial licence available separately. If this ever ships closed-source, budget for that licence or use Dokany instead.</li>
+    </ul>
+  </div>
+
+  <div class="route">
+    <div class="route-h"><h3>Route B &mdash; the VHD shim</h3><span class="tag tag-ok">Ship this first</span></div>
+    <p>A fixed-format VHD is nothing more than raw sector data followed by a 512-byte footer. So: decode the UDIF into a raw sector stream, append a VHD footer, and hand the result to <code>Mount-DiskImage</code>. Windows' own storage stack and its own exFAT driver take it from there.</p>
+    <ul>
+      <li><strong>Zero driver work of any kind.</strong> Full native read <em>and</em> write, at native speed, with no filesystem code of your own.</li>
+      <li>Bounded by what Windows already mounts: exFAT, FAT32, NTFS, ISO&nbsp;9660, UDF. <strong>Useless for HFS+ or APFS</strong> unless a third-party filesystem driver is also installed.</li>
+      <li>Costs the full uncompressed size in scratch space, and needs administrator rights to attach.</li>
+      <li>Writes land in the VHD, not the DMG. Getting them back requires a re-encode &mdash; see &sect;7.</li>
+    </ul>
+    <p>Under your stated exFAT assumption this is the correct answer, and it is a weekend of work rather than a quarter.</p>
+  </div>
+
+  <div class="route">
+    <div class="route-h"><h3>Route C &mdash; virtual SCSI / StorPort miniport</h3><span class="tag tag-warn">Only if you need raw disks</span></div>
+    <p>A kernel storage driver that presents the decoded image as a physical disk, the way Arsenal Image Mounter does. Windows then mounts the volume itself.</p>
+    <ul>
+      <li>Requires an EV code-signing certificate and attestation or WHQL signing to distribute. You own kernel-mode crash and bugcheck risk.</li>
+      <li>It still does not solve HFS+ or APFS &mdash; there is no Windows driver to hand them to.</li>
+      <li>Worth it only if you specifically need <code>\\.\PhysicalDriveN</code> semantics for forensics or imaging tools.</li>
+    </ul>
+  </div>
+
+  <div class="route">
+    <div class="route-h"><h3>Route D &mdash; Windows Projected File System</h3><span class="tag tag-stop">Wrong shape</span></div>
+    <p>ProjFS (the mechanism behind VFS for Git) projects a virtual namespace into a <em>directory</em>, not a volume. It ships in Windows, requires no signing, and would give a serviceable browse-and-copy-out experience &mdash; but its hydration model is built for source trees, write-back is awkward, and it cannot present itself as removable media. WinFsp does the same job better here.</p>
+  </div>
+
+  <div class="col">
+    <h3>The recommendation</h3>
+    <p>Build the decoder once and treat every route as a <em>head</em> on it. Ship the VHD exporter first because it is useful within days; add the WinFsp mount when HFS+ support lands. Do not build Route C unless a specific requirement demands it.</p>
+  </div>
+</section>
+
+<section id="app">
+  <div class="sec-head">
+    <span class="sec-n">&sect;3</span>
+    <h2>Question 2 &mdash; the application, and the prior art that proves it</h2>
+  </div>
+  <div class="col">
+    <p>This is settled by existence proof. The UDIF container is read today by 7&#8209;Zip, by <code>dmg2img</code>, by the <code>dmgwiz</code> Rust crate, by QEMU's <code>block/dmg.c</code>, and by <code>darling-dmg</code>. Several of those also walk HFS+. None of it is speculative.</p>
+    <p>What none of them do well is the part a user actually wants: a coherent Explorer-like browser with correct filename handling, working extraction of HFS+ compressed files, and drag-and-drop back out. That is the gap, and it is a user-experience gap rather than a format one.</p>
+  </div>
+</section>
+
+<section id="format">
+  <div class="sec-head">
+    <span class="sec-n">&sect;4</span>
+    <h2>What you actually have to parse</h2>
+  </div>
+  <div class="col">
+    <p>UDIF is read from the back. The last 512 bytes of the file are the <strong>koly trailer</strong>, identified by the magic <code>koly</code> (<code>0x6B6F6C79</code>). It carries the offset and length of the data fork, the offset and length of an XML property list, the total sector count and a set of checksums.</p>
+    <p>That property list holds a <code>resource-fork</code> dictionary containing an array of <code>blkx</code> entries. Each entry's payload is a base64-encoded <strong>mish block</strong> (magic <code>mish</code>, <code>0x6D697368</code>) describing one region of the disk: its first sector, its sector count, a base offset into the data fork, and then a list of 40-byte chunk descriptors.</p>
+  </div>
+
+  <div class="tw">
+    <table>
+      <caption>Chunk descriptor &mdash; 40 bytes, repeated to the terminator</caption>
+      <thead><tr><th>Offset</th><th>Size</th><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0x00</td><td>u32</td><td>EntryType</td><td>Compression method &mdash; see the table below</td></tr>
+        <tr><td class="num">0x04</td><td>u32</td><td>Comment</td><td>Usually zero; <code>+beg</code>/<code>+end</code> on comment entries</td></tr>
+        <tr><td class="num">0x08</td><td>u64</td><td>SectorNumber</td><td>Start sector, relative to this mish block's first sector</td></tr>
+        <tr><td class="num">0x10</td><td>u64</td><td>SectorCount</td><td>Uncompressed length, in 512-byte sectors</td></tr>
+        <tr><td class="num">0x18</td><td>u64</td><td>CompressedOffset</td><td>Byte offset into the data fork, relative to the mish base</td></tr>
+        <tr><td class="num">0x20</td><td>u64</td><td>CompressedLength</td><td>Bytes to read and feed to the codec</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tw">
+    <table>
+      <caption>EntryType values you must handle</caption>
+      <thead><tr><th>Value</th><th>Meaning</th><th>Codec</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0x00000000</td><td>Zero fill</td><td>&mdash;</td><td>Emit zeros; no read</td></tr>
+        <tr><td class="num">0x00000001</td><td>Raw</td><td>copy</td><td>Straight <code>memcpy</code> from the data fork</td></tr>
+        <tr><td class="num">0x00000002</td><td>Ignore / free</td><td>&mdash;</td><td>Unallocated; emit zeros</td></tr>
+        <tr><td class="num">0x80000004</td><td>Apple ADC</td><td>ADC</td><td>Legacy; simple LZ variant, ~200 lines</td></tr>
+        <tr><td class="num">0x80000005</td><td>zlib</td><td>inflate</td><td>UDZO &mdash; still the most common</td></tr>
+        <tr><td class="num">0x80000006</td><td>bzip2</td><td>bzip2</td><td>UDBZ</td></tr>
+        <tr><td class="num">0x80000007</td><td>LZFSE</td><td>lzfse</td><td>ULFO &mdash; Apple's own, Apache&nbsp;2.0 source</td></tr>
+        <tr><td class="num">0x80000008</td><td>LZMA</td><td>xz / lzma</td><td>Newer images</td></tr>
+        <tr><td class="num">0x7FFFFFFE</td><td>Comment</td><td>&mdash;</td><td>Skip</td></tr>
+        <tr><td class="num">0xFFFFFFFF</td><td>Terminator</td><td>&mdash;</td><td>End of chunk list</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <h4>Container variants to detect and route</h4>
+    <ul>
+      <li><strong>UDRW / UDTO / raw</strong> &mdash; uncompressed. Effectively a raw image with a koly trailer. The only variant you can write into cheaply.</li>
+      <li><strong>UDZO / UDBZ / ULFO / ULMO</strong> &mdash; compressed, the common distribution formats.</li>
+      <li><strong>Encrypted</strong> &mdash; an <code>encrcdsa</code> header at the <em>front</em> of the file instead. Passphrase to PBKDF2 to an unwrapped AES key. Defer to v2, but detect it and say so rather than failing with a parse error.</li>
+      <li><strong>NDIF</strong> (classic Mac OS <code>.img</code>), <strong>sparseimage</strong> and <strong>sparsebundle</strong> &mdash; different containers entirely. Detect and report; do not attempt in v1.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="stack">
+  <div class="sec-head">
+    <span class="sec-n">&sect;5</span>
+    <h2>The architecture &mdash; one core, several heads</h2>
+  </div>
+  <div class="col">
+    <p>The whole design turns on a single seam. Layers L0 to L3 together do exactly one thing: turn a <code>.dmg</code> file into something that answers <code>read(offset, length)</code> like a plain disk. Everything above that seam believes it is talking to ordinary hardware and does not know DMG exists.</p>
+    <p>That is what lets the GUI, the CLI, the VHD exporter and the WinFsp mount all be thin. It is also what lets you test the hard half in isolation, against <code>dmg2img</code> output, with no driver installed and no Windows involved at all.</p>
+  </div>
+
+  <div class="layers">
+    <div class="ly"><div class="ly-n">L0</div><div><p class="ly-t">Byte source</p><p class="ly-d">Memory-mapped file, or a stream. Isolates the one place that touches storage, so an HTTP range-request source can be dropped in later without disturbing anything above.</p></div></div>
+    <div class="ly"><div class="ly-n">L1</div><div><p class="ly-t">Container parser</p><p class="ly-d">Sniff UDIF / NDIF / raw / <code>encrcdsa</code>. Read the koly trailer, parse the plist, decode every <code>blkx</code> into mish blocks and chunk descriptors. Produces an extent list, nothing more.</p></div></div>
+    <div class="ly"><div class="ly-n">L2</div><div><p class="ly-t">Extent index and chunk cache</p><p class="ly-d">The extents sorted into a flat array keyed by start sector, so a read is a binary search. An LRU cache of decompressed chunks sits here &mdash; without it the design does not perform. A sidecar index file avoids re-parsing the plist on every mount.</p></div></div>
+    <div class="ly"><div class="ly-n">L3</div><div><p class="ly-t">Codecs</p><p class="ly-d">zlib, bzip2, LZFSE, LZMA, ADC, raw and zero behind one <code>decompress(in, out, expectedSectors)</code> signature. Each one hard-bounds its output against the descriptor's declared sector count.</p></div></div>
+    <div class="seam"><div class="seam-n">&#8213;</div><div><p><strong>IBlockDevice</strong> &nbsp;&mdash;&nbsp; read(offset, length) &rarr; sectors</p></div></div>
+    <div class="ly"><div class="ly-n">L4</div><div><p class="ly-t">Partition mapper</p><p class="ly-d">Driver Descriptor Map at sector 0, Apple Partition Map, GPT behind a protective MBR, or no table at all. Emits the set of volumes and their sector ranges.</p></div></div>
+    <div class="ly"><div class="ly-n">L5</div><div><p class="ly-t">Filesystem readers</p><p class="ly-d">Pluggable behind one interface: exFAT and FAT32 (read and write), HFS+ and HFSX (read), APFS (read only), ISO&nbsp;9660 and UDF (read). Each one is independently testable against a fixture image.</p></div></div>
+    <div class="ly"><div class="ly-n">L6</div><div><p class="ly-t">VFS &mdash; the Mac-to-Windows mapping</p><p class="ly-d">Names, timestamps, forks, links, permissions. Small in code and large in bugs; &sect;6 is entirely about this layer.</p></div></div>
+    <div class="ly"><div class="ly-n">&mdash;</div><div><p class="ly-t">Heads</p><p class="ly-d">WinFsp mount host, VHD exporter, GUI browser, CLI, Explorer shell extension. Parallel consumers, not a further layer &mdash; each is a few hundred lines over the core.</p></div></div>
+  </div>
+
+  <figure>
+    <svg class="dg" viewBox="0 0 800 736" role="img" aria-label="The path of a single four kilobyte read down through the stack: Explorer to the WinFsp kernel driver, into the user-mode mount host, through the filesystem reader and partition map to the extent index, which finds chunk 217, checks the chunk cache, and on a miss inflates a full one-megabyte chunk from the memory-mapped data fork. On a cache hit the last two steps are skipped entirely.">
+      <defs>
+        <marker id="a1h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" class="hd"/>
+        </marker>
+        <marker id="a1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" class="hd-a"/>
+        </marker>
+      </defs>
+
+      <rect x="210" y="20"  width="320" height="52" class="bx-sup"/>
+      <text x="370" y="51"  class="t" text-anchor="middle">Windows Explorer</text>
+
+      <rect x="210" y="100" width="320" height="52" class="bx-sup"/>
+      <text x="370" y="123" class="t" text-anchor="middle">WinFsp FSD</text>
+      <text x="370" y="141" class="ts" text-anchor="middle">kernel mode &middot; signed, supplied</text>
+
+      <rect x="210" y="180" width="320" height="52" class="bx-you"/>
+      <text x="370" y="203" class="t" text-anchor="middle">Mount host</text>
+      <text x="370" y="221" class="ts" text-anchor="middle">user mode &middot; your service</text>
+
+      <rect x="210" y="260" width="320" height="52" class="bx-you"/>
+      <text x="370" y="283" class="t" text-anchor="middle">Filesystem reader</text>
+      <text x="370" y="301" class="ts" text-anchor="middle">L5 &middot; HFS+ / exFAT</text>
+
+      <rect x="210" y="340" width="320" height="52" class="bx-you"/>
+      <text x="370" y="363" class="t" text-anchor="middle">Partition mapper</text>
+      <text x="370" y="381" class="ts" text-anchor="middle">L4 &middot; GPT / APM</text>
+
+      <rect x="210" y="420" width="320" height="52" class="bx-you"/>
+      <text x="370" y="443" class="t" text-anchor="middle">Extent index</text>
+      <text x="370" y="461" class="ts" text-anchor="middle">L2 &middot; binary search</text>
+
+      <rect x="210" y="500" width="320" height="52" class="bx-you"/>
+      <text x="370" y="523" class="t" text-anchor="middle">Chunk cache</text>
+      <text x="370" y="541" class="ts" text-anchor="middle">L2 &middot; LRU, 64 MiB default</text>
+
+      <rect x="210" y="580" width="320" height="52" class="bx-you"/>
+      <text x="370" y="603" class="t" text-anchor="middle">Codec &mdash; zlib inflate</text>
+      <text x="370" y="621" class="ts" text-anchor="middle">L3 &middot; 1 MiB chunk</text>
+
+      <rect x="210" y="660" width="320" height="52" class="bx"/>
+      <text x="370" y="683" class="t" text-anchor="middle">Data fork &middot; mmap</text>
+      <text x="370" y="701" class="ts" text-anchor="middle">L0 &middot; image.dmg</text>
+
+      <line x1="370" y1="72"  x2="370" y2="94"  class="ln" marker-end="url(#a1h)"/>
+      <line x1="370" y1="152" x2="370" y2="174" class="ln" marker-end="url(#a1h)"/>
+      <line x1="370" y1="232" x2="370" y2="254" class="ln" marker-end="url(#a1h)"/>
+      <line x1="370" y1="312" x2="370" y2="334" class="ln" marker-end="url(#a1h)"/>
+      <line x1="370" y1="392" x2="370" y2="414" class="ln" marker-end="url(#a1h)"/>
+      <line x1="370" y1="472" x2="370" y2="494" class="ln" marker-end="url(#a1h)"/>
+      <line x1="370" y1="552" x2="370" y2="574" class="ln" marker-end="url(#a1h)"/>
+      <line x1="370" y1="632" x2="370" y2="654" class="ln" marker-end="url(#a1h)"/>
+
+      <text x="196" y="87"  class="lbl" text-anchor="end">read 4 KiB @ 0x8A000</text>
+      <text x="196" y="167" class="lbl" text-anchor="end">IRP_MJ_READ</text>
+      <text x="196" y="247" class="lbl" text-anchor="end">handle + offset</text>
+      <text x="196" y="327" class="lbl" text-anchor="end">volume sector 1 104</text>
+      <text x="196" y="407" class="lbl" text-anchor="end">image sector 411 728</text>
+      <text x="196" y="487" class="lbl" text-anchor="end">chunk #217</text>
+      <text x="196" y="567" class="lbl" text-anchor="end">miss</text>
+      <text x="196" y="647" class="lbl" text-anchor="end">262 KiB @ CompressedOffset</text>
+
+      <path d="M530 526 H600 V286 H538" class="ln-a" marker-end="url(#a1a)"/>
+      <text x="612" y="396" class="lbl-a">cache hit &mdash;</text>
+      <text x="612" y="412" class="lbl-a">no decode, no I/O</text>
+    </svg>
+    <div class="legend">
+      <span><i class="sw sw-sup"></i>Supplied by Windows / WinFsp</span>
+      <span><i class="sw sw-you"></i>You build it</span>
+    </div>
+    <figcaption><b>Figure 2</b> Why the cache is architecture and not optimisation. Chunks in a UDZO image are typically one mebibyte, so a four-kilobyte random read decompresses 256&times; the data it returns. The accent path is the same read served from cache &mdash; it skips the codec and the file entirely, and it is the difference between a mount that feels like a disk and one that feels broken.</figcaption>
+  </figure>
+</section>
+
+<section id="mapping">
+  <div class="sec-head">
+    <span class="sec-n">&sect;6</span>
+    <h2>The layer everyone underestimates</h2>
+  </div>
+  <div class="col">
+    <p>L6 is where a technically correct reader becomes a usable one. None of these are hard individually; all of them are silently wrong if skipped, and several produce the specific failure of "the file is there but it's empty."</p>
+
+    <h4>Names</h4>
+    <ul>
+      <li><strong>Unicode normalisation.</strong> HFS+ stores filenames decomposed (NFD, and a specific Apple variant of it). Windows expects composed (NFC). Compose on the way out, decompose on lookup, or accented names will not round-trip.</li>
+      <li><strong>Illegal characters.</strong> A colon is legal in an HFS+ name and illegal on Windows &mdash; as are <code>\ / ? * " &lt; &gt; |</code>, trailing dots and spaces, and the reserved names <code>CON</code>, <code>PRN</code>, <code>AUX</code>, <code>NUL</code>, <code>COM1</code>&ndash;<code>9</code>, <code>LPT1</code>&ndash;<code>9</code>. Map them to their fullwidth equivalents so the substitution is visible and reversible.</li>
+      <li><strong>Case sensitivity.</strong> HFSX and APFS may be case-sensitive; a Windows volume is not. Two files differing only in case will collide &mdash; detect it and disambiguate rather than dropping one.</li>
+    </ul>
+
+    <h4>Content</h4>
+    <ul>
+      <li><strong>Transparent compression.</strong> This is the one that catches everybody. Files on a Mac volume are frequently stored compressed, with the payload hidden in a <code>com.apple.decmpfs</code> extended attribute &mdash; inline for small files, or as a chunked table in the resource fork for large ones, using zlib or LZVN. A reader that ignores it reports a great many files as <strong>zero bytes</strong> and looks broken. It must be implemented, not deferred.</li>
+      <li><strong>Resource forks.</strong> Map to NTFS alternate data streams, or drop them deliberately &mdash; but decide, and document it. Hide the <code>._name</code> AppleDouble companions rather than showing them as junk.</li>
+      <li><strong>Hard links.</strong> HFS+ implements them as indirect nodes pointing into a hidden private directory. Resolve them or the file appears as an unreadable stub.</li>
+    </ul>
+
+    <h4>Metadata</h4>
+    <ul>
+      <li><strong>Three time epochs.</strong> HFS+ counts seconds from 1904&#8209;01&#8209;01 <em>in local time</em>; APFS counts nanoseconds from the Unix epoch; Windows counts 100&#8209;nanosecond ticks from 1601. Every conversion is easy and every one is easy to get subtly wrong.</li>
+      <li><strong>Permissions.</strong> There is no useful mapping from uid/gid/mode to a Windows ACL. Synthesise a sensible one; surface the Mac "locked" flag as read-only.</li>
+      <li><strong>Housekeeping files.</strong> Mark <code>.DS_Store</code>, <code>.fseventsd</code>, <code>.Spotlight-V100</code>, <code>.Trashes</code> and <code>.VolumeIcon.icns</code> hidden and system, so the drive opens looking like the Mac window it is meant to mirror.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="write">
+  <div class="sec-head">
+    <span class="sec-n">&sect;7</span>
+    <h2>Writing &mdash; the honest answer, and the design that makes it survivable</h2>
+  </div>
+  <div class="col">
+    <p>Writing is two separate problems that people usually conflate.</p>
+    <p><strong>Writing into the filesystem.</strong> exFAT is tractable: the specification is published, the structures are simple, and there are working implementations to check against. HFS+ is risky &mdash; catalog and extents B-trees, an allocation bitmap and a journal, all of which must stay consistent or the volume will not mount on a Mac again. APFS is effectively off the table: copy-on-write, checkpoints, an object map, a space manager and Fletcher&#8209;64 checksums throughout. Do not write APFS.</p>
+    <p><strong>Writing into the container.</strong> Into an uncompressed UDRW image this is trivial. Into a compressed one it is not: changing one sector invalidates its chunk, recompressing that chunk changes its length, and every subsequent chunk's <code>CompressedOffset</code> then shifts &mdash; which means rewriting every mish table, the koly trailer and all the checksums. That is a full rewrite of the file.</p>
+    <p>An <strong>overlay</strong> resolves both. Writes never touch the image; they land in a sparse sidecar keyed by sector, with a dirty bitmap deciding, per sector, whether a read is served from the overlay or falls through to the base. Commit is a separate, explicit act.</p>
+  </div>
+
+  <figure>
+    <svg class="dg" viewBox="0 0 900 396" role="img" aria-label="The overlay write model in two phases. While mounted, the base DMG is never written: clean sectors come from it and dirty sectors from a sparse overlay file, merged into one sector view that the filesystem reads and writes. On commit, untouched chunks are copied verbatim from the base and only dirty chunks are re-encoded, into a temporary file that is then atomically renamed.">
+      <defs>
+        <marker id="a3h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" class="hd"/>
+        </marker>
+      </defs>
+
+      <text x="20" y="18" class="band">PHASE 1 &middot; WHILE MOUNTED</text>
+
+      <rect x="20"  y="40"  width="220" height="54" class="bx-sup"/>
+      <text x="130" y="63"  class="t"  text-anchor="middle">Base image.dmg</text>
+      <text x="130" y="81"  class="ts" text-anchor="middle">never written</text>
+
+      <rect x="20"  y="118" width="220" height="54" class="bx-you"/>
+      <text x="130" y="141" class="t"  text-anchor="middle">Overlay .dmgovl</text>
+      <text x="130" y="159" class="ts" text-anchor="middle">sparse + dirty bitmap</text>
+
+      <rect x="350" y="79"  width="190" height="54" class="bx-you"/>
+      <text x="445" y="102" class="t"  text-anchor="middle">Merged view</text>
+      <text x="445" y="120" class="ts" text-anchor="middle">bitmap decides</text>
+
+      <rect x="620" y="79"  width="200" height="54" class="bx-sup"/>
+      <text x="720" y="102" class="t"  text-anchor="middle">Filesystem &middot; Explorer</text>
+      <text x="720" y="120" class="ts" text-anchor="middle">exFAT writer</text>
+
+      <line x1="240" y1="67"  x2="342" y2="96"  class="ln" marker-end="url(#a3h)"/>
+      <line x1="240" y1="145" x2="342" y2="116" class="ln" marker-end="url(#a3h)"/>
+      <text x="291" y="76"  class="lbl" text-anchor="middle">clean</text>
+      <text x="291" y="152" class="lbl" text-anchor="middle">dirty</text>
+
+      <line x1="540" y1="106" x2="612" y2="106" class="ln" marker-start="url(#a3h)" marker-end="url(#a3h)"/>
+      <text x="576" y="98"  class="lbl" text-anchor="middle">read / write</text>
+
+      <line x1="20" y1="196" x2="880" y2="196" class="ln-d"/>
+      <text x="20" y="222" class="band">PHASE 2 &middot; ON COMMIT ONLY</text>
+
+      <rect x="60"  y="246" width="210" height="50" class="bx-sup"/>
+      <text x="165" y="276" class="t" text-anchor="middle">Base image.dmg</text>
+
+      <rect x="60"  y="312" width="210" height="50" class="bx-you"/>
+      <text x="165" y="342" class="t" text-anchor="middle">Overlay .dmgovl</text>
+
+      <rect x="520" y="278" width="280" height="52" class="bx-you"/>
+      <text x="660" y="301" class="t"  text-anchor="middle">Encode &rarr; .tmp &rarr; rename</text>
+      <text x="660" y="319" class="ts" text-anchor="middle">atomic; original intact until the last step</text>
+
+      <line x1="270" y1="271" x2="512" y2="292" class="ln" marker-end="url(#a3h)"/>
+      <line x1="270" y1="337" x2="512" y2="316" class="ln" marker-end="url(#a3h)"/>
+      <text x="391" y="268" class="lbl" text-anchor="middle">chunks copied verbatim</text>
+      <text x="391" y="346" class="lbl" text-anchor="middle">chunks re-compressed</text>
+    </svg>
+    <figcaption><b>Figure 3</b> The overlay decouples the risky operation from the live filesystem. Because only chunks containing dirty sectors need re-encoding, commit copies most of the file through untouched &mdash; and because it writes to a temporary and renames, a crash mid-commit leaves the original image exactly as it was. It also means write support can be offered on compressed images, which a direct in-place design cannot do at all.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <caption>Write policy &mdash; what the product should offer, and refuse</caption>
+      <thead><tr><th>Container</th><th>Filesystem</th><th>Read</th><th>Live write</th><th>Commit back</th></tr></thead>
+      <tbody>
+        <tr><td>UDRW / raw</td><td>exFAT, FAT32</td><td class="y">Yes</td><td class="y">Yes, in place</td><td>Not needed</td></tr>
+        <tr><td>UDZO / UDBZ / ULFO</td><td>exFAT, FAT32</td><td class="y">Yes</td><td class="y">Yes, via overlay</td><td class="y">Re-encode</td></tr>
+        <tr><td>Any</td><td>HFS+ / HFSX</td><td class="y">Yes</td><td class="m">v2 &mdash; overlay only</td><td class="m">v2</td></tr>
+        <tr><td>Any</td><td>APFS</td><td class="y">Yes</td><td class="n">No</td><td class="n">No</td></tr>
+        <tr><td>Any</td><td>ISO 9660 / UDF</td><td class="y">Yes</td><td class="n">No</td><td class="n">No</td></tr>
+        <tr><td>encrcdsa</td><td>Any</td><td class="m">v2</td><td class="n">No</td><td class="n">No</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note risk">
+    <p class="nh">The one thing not to do</p>
+    <p>Do not offer in-place writes to HFS+ or APFS on an image the user cares about, however well the read path is going. A half-updated B-tree or a stale journal produces a volume that Disk Utility refuses to mount, and the user will have no copy. If HFS+ write ever ships, ship it overlay-only, with commit writing a new file &mdash; never over the original.</p>
+  </div>
+</section>
+
+<section id="perf">
+  <div class="sec-head">
+    <span class="sec-n">&sect;8</span>
+    <h2>Performance and security &mdash; the two constraints that shape the code</h2>
+  </div>
+  <div class="col">
+    <h4>Performance</h4>
+    <ul>
+      <li><strong>Cache sizing is the single most consequential number.</strong> Default to 64&nbsp;MiB of decompressed chunks; make it configurable. Below roughly a dozen chunks, directory traversal in a large image degrades badly, because metadata reads scatter across chunks.</li>
+      <li><strong>Prefetch on sequential detection.</strong> When consecutive reads advance monotonically, decompress chunk <em>n</em>+1 on a background thread. This is most of the difference in copy-out throughput.</li>
+      <li><strong>Persist the index.</strong> Parsing the plist and every mish block takes milliseconds, but doing it on every mount is visible. Cache it in a sidecar keyed on path, size, mtime and the koly checksum.</li>
+      <li><strong>Let the OS cache the compressed bytes.</strong> Memory-map the data fork rather than reading it; the page cache then holds the hot compressed regions for free.</li>
+      <li><strong>Do not hydrate under the mount.</strong> Extracting the whole image to disk under a WinFsp mount defeats the point &mdash; that behaviour is Route B, and it should be an explicit user choice, not a hidden fallback.</li>
+    </ul>
+
+    <h4>Security</h4>
+    <p>Every byte of a DMG is attacker-controlled &mdash; these files arrive from the internet &mdash; and in the mount configuration your parser sits directly behind a kernel driver. Treat it accordingly.</p>
+    <ul>
+      <li><strong>Bound every declared length against the real file size</strong> before allocating or seeking. <code>CompressedOffset</code> and <code>CompressedLength</code> are the obvious attack surface.</li>
+      <li><strong>Cap decompression output</strong> at the descriptor's <code>SectorCount</code> &times; 512 and abort on overrun. A chunk claiming four gigabytes of output is a decompression bomb, not a large file.</li>
+      <li><strong>Use checked arithmetic on all sector maths.</strong> 64-bit sector counts multiplied by 512 overflow, and the result indexes a buffer.</li>
+      <li><strong>Bound B-tree traversal.</strong> HFS+ catalog nodes can be made to form a cycle; cap depth and track visited nodes.</li>
+      <li><strong>Run the mount host as a low-privilege account</strong>, and consider isolating the parser in a separate restricted process behind a pipe. It costs little and contains a great deal.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="build">
+  <div class="sec-head">
+    <span class="sec-n">&sect;9</span>
+    <h2>Build order</h2>
+  </div>
+  <div class="col">
+    <p>Ordered so that something usable exists at M3, and every milestone is verifiable against an existing tool rather than against itself.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-i"><div class="ms-n">M1</div><div><p class="ms-t">The core, minimum viable</p><p class="ms-d">koly, plist and mish parsing; raw, zero and zlib codecs; extent index; <code>IBlockDevice</code>. Two CLI verbs: <code>dmginfo</code> and <code>dmgextract</code>. Verified byte-for-byte against <code>dmg2img</code> output.</p></div></div>
+    <div class="ms-i"><div class="ms-n">M2</div><div><p class="ms-t">Format completeness</p><p class="ms-d">bzip2, LZFSE, LZMA and ADC. Partition layer &mdash; DDM, APM, GPT. exFAT and FAT32 read. First real directory listings.</p></div></div>
+    <div class="ms-i ship"><div class="ms-n">M3</div><div><p class="ms-t">VHD head &mdash; first shippable drive</p><p class="ms-d">Decode to raw, append the VHD footer, attach via <code>Mount-DiskImage</code>. A real drive letter with native read and write, for any image whose payload Windows already understands. <strong>Ship it here.</strong></p></div></div>
+    <div class="ms-i"><div class="ms-n">M4</div><div><p class="ms-t">HFS+ read, done properly</p><p class="ms-d">Catalog and extents B-trees, hard-link resolution, resource forks, and <code>decmpfs</code> transparent decompression. This is the milestone that makes the tool work on real downloads.</p></div></div>
+    <div class="ms-i"><div class="ms-n">M5</div><div><p class="ms-t">Application head</p><p class="ms-d">The GUI browser with the L6 mapping applied: correct names, correct sizes, drag-out extraction. Shell extension for &ldquo;Mount&rdquo; on right-click.</p></div></div>
+    <div class="ms-i ship"><div class="ms-n">M6</div><div><p class="ms-t">WinFsp mount, read-only</p><p class="ms-d">A drive letter over the live compressed image, HFS+ included, with no extraction. The headline capability.</p></div></div>
+    <div class="ms-i"><div class="ms-n">M7</div><div><p class="ms-t">Overlay write and commit</p><p class="ms-d">Sparse overlay, dirty bitmap, exFAT write, and the re-encoder. Gated by the policy matrix in &sect;7.</p></div></div>
+    <div class="ms-i"><div class="ms-n">M8</div><div><p class="ms-t">Long tail</p><p class="ms-d">APFS read; <code>encrcdsa</code> decryption; NDIF, sparseimage and sparsebundle containers.</p></div></div>
+  </div>
+</section>
+
+<section id="stack-choice">
+  <div class="sec-head">
+    <span class="sec-n">&sect;10</span>
+    <h2>Implementation notes and one licence to check</h2>
+  </div>
+  <div class="col">
+    <p><strong>Language.</strong> Rust for the core. The argument is not taste: this is a binary parser handling hostile input whose output is consumed by a kernel driver, and the entire class of bug that has historically made image parsers dangerous is the class Rust removes. There is also existing ground to stand on &mdash; <code>dmgwiz</code>, <code>lzfse</code>, <code>flate2</code>, <code>bzip2</code>, <code>xz2</code>, and <code>winfsp-rs</code> bindings. If you would rather follow WinFsp's own samples closely, its C API with the <code>memfs</code> and <code>passthrough</code> examples is the shortest path to a working mount.</p>
+    <p><strong>Shape of the repository.</strong> One crate for the core with no Windows dependency at all, so it builds and tests on the Mac where the fixture images are made. Separate crates for each head. The core's test suite is a set of small fixture DMGs &mdash; one per codec, one per partition scheme, one per filesystem &mdash; generated by <code>hdiutil</code> on macOS and checked in.</p>
+    <p><strong>Licensing.</strong> Nothing here is circumvention: UDIF is undocumented rather than protected, HFS+ and APFS both have published Apple references, and LZFSE is Apple's own Apache&#8209;2.0 release. The single thing to settle before writing code is WinFsp's licence &mdash; GPLv3 with a free-software exception, with a commercial option &mdash; because it determines whether the mount head can be closed-source. Dokany, under LGPL and MIT, is the fallback if the answer matters and the commercial licence does not suit.</p>
+  </div>
+</section>
+
+<footer>
+  <div>Design study prepared 9 September 2026. Format details reflect the UDIF structures as documented in public reverse-engineering work and as implemented in QEMU's DMG block driver; verify field offsets against a real image before relying on them in code.</div>
+</footer>
+
+</div>
