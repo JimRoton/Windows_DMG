@@ -9,6 +9,27 @@
 #
 # CI ONLY. Nothing here pushes, tags, releases or deploys - packaging and
 # release automation is S10.2 and lives in its own workflow file.
+#
+# ---------------------------------------------------------------------------
+# THE ZERO-TEST GATE (S1.7)
+#
+# `dotnet test` exits 0 when a project discovers NO tests - confirmed on SDK
+# 10.0.301. A suite that silently stops being discovered (a broken
+# `<IsTestProject>`, a missing xunit runner, a filter that matches nothing, a
+# renamed namespace) therefore reports success, and the job goes green having
+# proved nothing at all. That is the worst possible failure mode for CI: the
+# signal disappears without anyone being told.
+#
+# So every test step below writes a TRX and then asserts that the number of
+# EXECUTED tests is greater than zero. If a suite runs no tests the job fails
+# and says so. The count comes from the TRX <Counters executed="N"> attribute
+# rather than from parsing console text, because the TRX is a stable machine
+# format and the console summary is not.
+#
+# The gate is repeated inline in each step on purpose: a shared script would
+# have to live outside .github/workflows/, and one legible block per step keeps
+# the failure visible in the log right where it happened.
+# ---------------------------------------------------------------------------
 
 name: CI
 
@@ -73,7 +94,31 @@ jobs:
         run: dotnet build tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj --configuration Release --no-restore
 
       - name: Test Dmg.Core.Tests
-        run: dotnet test tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj --configuration Release --no-build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf artifacts/trx/core
+          dotnet test tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj \
+            --configuration Release --no-build \
+            --logger "trx;LogFileName=core.trx" \
+            --results-directory artifacts/trx/core
+
+          # --- zero-test gate: see THE ZERO-TEST GATE at the top of this file.
+          trx=$(find artifacts/trx/core -name '*.trx' -type f | head -1 || true)
+          if [ -z "$trx" ]; then
+            echo "::error::Dmg.Core.Tests produced no TRX file, so the run cannot be verified."
+            exit 1
+          fi
+
+          executed=$(grep -o 'executed="[0-9]*"' "$trx" | head -1 | tr -dc '0-9' || true)
+          executed=${executed:-0}
+          echo "Dmg.Core.Tests executed $executed test(s)."
+
+          if [ "$executed" -lt 1 ]; then
+            echo "::error::Dmg.Core.Tests discovered 0 tests. dotnet test exits 0 in that case, so this job would otherwise have passed vacuously."
+            exit 1
+          fi
 
   # ---------------------------------------------------------------------------
   # windows - full solution build plus the unit suites.
@@ -102,10 +147,58 @@ jobs:
         run: dotnet build Windows_DMG.sln --configuration Release --no-restore
 
       - name: Test Dmg.Core.Tests
-        run: dotnet test tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj --configuration Release --no-build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf artifacts/trx/core
+          dotnet test tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj \
+            --configuration Release --no-build \
+            --logger "trx;LogFileName=core.trx" \
+            --results-directory artifacts/trx/core
+
+          # --- zero-test gate: see THE ZERO-TEST GATE at the top of this file.
+          trx=$(find artifacts/trx/core -name '*.trx' -type f | head -1 || true)
+          if [ -z "$trx" ]; then
+            echo "::error::Dmg.Core.Tests produced no TRX file, so the run cannot be verified."
+            exit 1
+          fi
+
+          executed=$(grep -o 'executed="[0-9]*"' "$trx" | head -1 | tr -dc '0-9' || true)
+          executed=${executed:-0}
+          echo "Dmg.Core.Tests executed $executed test(s)."
+
+          if [ "$executed" -lt 1 ]; then
+            echo "::error::Dmg.Core.Tests discovered 0 tests. dotnet test exits 0 in that case, so this job would otherwise have passed vacuously."
+            exit 1
+          fi
 
       - name: Test Dmg.Windows.Tests
-        run: dotnet test tests/Dmg.Windows.Tests/Dmg.Windows.Tests.csproj --configuration Release --no-build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf artifacts/trx/windows
+          dotnet test tests/Dmg.Windows.Tests/Dmg.Windows.Tests.csproj \
+            --configuration Release --no-build \
+            --logger "trx;LogFileName=windows.trx" \
+            --results-directory artifacts/trx/windows
+
+          # --- zero-test gate: see THE ZERO-TEST GATE at the top of this file.
+          trx=$(find artifacts/trx/windows -name '*.trx' -type f | head -1 || true)
+          if [ -z "$trx" ]; then
+            echo "::error::Dmg.Windows.Tests produced no TRX file, so the run cannot be verified."
+            exit 1
+          fi
+
+          executed=$(grep -o 'executed="[0-9]*"' "$trx" | head -1 | tr -dc '0-9' || true)
+          executed=${executed:-0}
+          echo "Dmg.Windows.Tests executed $executed test(s)."
+
+          if [ "$executed" -lt 1 ]; then
+            echo "::error::Dmg.Windows.Tests discovered 0 tests. dotnet test exits 0 in that case, so this job would otherwise have passed vacuously."
+            exit 1
+          fi
 
   # ---------------------------------------------------------------------------
   # e2e - genuine mounts.
@@ -116,9 +209,18 @@ jobs:
   #
   # The suite is deliberately allowed to be empty (or missing) for now: S10.4
   # is the story that fills it in. Until then this job must stay green rather
-  # than reporting a false failure, so the test step tolerates "no tests found"
-  # and an absent project directory. Once S10.4 lands, that tolerance can be
-  # deleted - but nothing else in this job needs to change.
+  # than reporting a false failure, so the test step tolerates an absent
+  # project directory.
+  #
+  # NOTE FOR S10.4: this job is the one place with NO zero-test gate, and it is
+  # therefore the one place a vanished suite would still pass silently. When
+  # S10.4 populates Dmg.E2E.Tests, delete the not-present tolerance below and
+  # add the same "executed > 0" TRX gate the core and windows jobs use.
+  #
+  # The old tolerance for a "no test is available" message has been removed: on
+  # SDK 10.0.301 `dotnet test` exits 0 when a project discovers no tests, so
+  # that branch was unreachable - it only ever ran on a non-zero exit. Keeping
+  # it implied a safety net that did not exist.
   # ---------------------------------------------------------------------------
   e2e:
     name: e2e (Windows - real mounts)
@@ -144,28 +246,22 @@ jobs:
       - name: Build solution
         run: dotnet build Windows_DMG.sln --configuration Release --no-restore
 
-      - name: Test Dmg.E2E.Tests
+      # NOT GATED YET - S10.4 must add the "executed > 0" gate here. See the
+      # note above this job.
+      - name: Test Dmg.E2E.Tests (not yet gated - S10.4)
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
 
           if ! compgen -G "tests/Dmg.E2E.Tests/*.csproj" > /dev/null; then
             echo "tests/Dmg.E2E.Tests is not present yet - nothing to run (S10.4 adds the suite)."
             exit 0
           fi
 
-          set +e
           dotnet test tests/Dmg.E2E.Tests/Dmg.E2E.Tests.csproj \
-            --configuration Release --no-build 2>&1 | tee e2e-test.log
-          status=${PIPESTATUS[0]}
-          set -e
+            --configuration Release --no-build
 
-          if [ "$status" -ne 0 ] && grep -qiE "no test (is available|matches|source files)" e2e-test.log; then
-            echo "::notice::Dmg.E2E.Tests contains no tests yet - treating as success (S10.4 fills it in)."
-            exit 0
-          fi
-
-          exit "$status"
+          echo "::notice::Dmg.E2E.Tests is not covered by the zero-test gate yet; S10.4 must add it."
 
   # ---------------------------------------------------------------------------
   # dependency-guard - ADR-002, zero third-party dependencies.
