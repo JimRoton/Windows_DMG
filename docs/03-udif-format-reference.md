@@ -133,13 +133,20 @@ Each `<data>` payload decodes to a mish block. Magic `mish` = `0x6D697368`.
 | `0x20` | 4 | BuffersNeeded | |
 | `0x24` | 4 | BlockDescriptors | |
 | `0x28` | 24 | Reserved | |
-| `0x40` | 32 | Checksum block | type, size, then the value |
-| `0x?` | 4 | **NumberOfBlockChunks** | at `0x00CC` in practice — verify |
-| `0x?` | 40×N | Chunk descriptors | immediately follows |
+| `0x40` | 136 | Checksum block | 4-byte type, 4-byte size **in bits**, 128-byte value |
+| `0xC8` | 4 | **NumberOfBlockChunks** | verified |
+| `0xCC` | 40×N | Chunk descriptors | verified |
 
-The chunk table begins at offset **204 (`0xCC`)** in a v1 mish block. Confirm this
-against a fixture; different sources describe the reserved/checksum region
-differently and this is the offset most likely to be wrong.
+**Verified, and the earlier note was half wrong.** This table used to give the
+checksum block as 32 bytes and put `NumberOfBlockChunks` at `0xCC` while the prose
+below it said the chunk table also began at `0xCC` — which cannot both be true.
+
+The count is at **`0xC8`**; the table starts at **`0xCC`** (204). The checksum
+block is **136 bytes** at `0x40`, which is what makes `0x40 + 136 = 0xC8` come out
+right. Checked against a UDZO image from `hdiutil`: its two mish blocks are 284
+and 364 bytes, exactly `0xCC + 40×2` and `0xCC + 40×4`, and the words at `0xC8`
+are 2 and 4. Reading the count from `0xCC` instead yields `0x80000005` — the first
+chunk's zlib entry type — and neither block size divides.
 
 ---
 
