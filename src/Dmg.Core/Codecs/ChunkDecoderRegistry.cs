@@ -221,5 +221,6 @@ public sealed class ChunkDecoderRegistry
         ZeroChunkDecoder.Ignore,
         RawChunkDecoder.Instance,
         ZlibChunkDecoder.Instance,
+        AdcChunkDecoder.Instance,
     ];
 }
