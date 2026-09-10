@@ -39,6 +39,10 @@ namespace Dmg.Core.Containers;
 /// <param name="BlockDescriptors">Descriptor index, passed through uninterpreted.</param>
 /// <param name="ChecksumType">The region checksum algorithm, passed through uninterpreted.</param>
 /// <param name="ChunkCount">How many 40-byte descriptors follow the header.</param>
+/// <param name="Chunks">
+/// The chunks that carry sectors, in table order: the terminator has been consumed
+/// and comment entries dropped.
+/// </param>
 public sealed record MishBlock(
     uint Version,
     ulong FirstSectorNumber,
@@ -47,7 +51,8 @@ public sealed record MishBlock(
     uint BuffersNeeded,
     uint BlockDescriptors,
     uint ChecksumType,
-    uint ChunkCount)
+    uint ChunkCount,
+    IReadOnlyList<ChunkDescriptor> Chunks)
 {
     /// <summary>The block signature, <c>mish</c>.</summary>
     public const uint Magic = 0x6D697368;
@@ -160,6 +165,13 @@ public sealed record MishBlock(
                 $"but the block is {block.Length} bytes.");
         }
 
+        Result<List<ChunkDescriptor>> chunks = ParseChunks(block, chunkCount, sectorCount, region);
+
+        if (!chunks.TryGetValue(out List<ChunkDescriptor>? parsed))
+        {
+            return chunks.CastFailure<MishBlock>();
+        }
+
         return Result<MishBlock>.Success(new MishBlock(
             version,
             firstSector,
@@ -168,6 +180,82 @@ public sealed record MishBlock(
             buffersNeeded,
             blockDescriptors,
             checksumType,
-            chunkCount));
+            chunkCount,
+            parsed));
+    }
+
+    /// <summary>
+    /// This chunk's start sector on the decoded disk. The chunk's own
+    /// <see cref="ChunkDescriptor.SectorNumber"/> is relative to this block.
+    /// </summary>
+    public Result<ulong> AbsoluteStartSectorOf(ChunkDescriptor chunk) =>
+        chunk.AbsoluteStartSector(FirstSectorNumber);
+
+    /// <summary>
+    /// Walks the 40-byte descriptors, stopping at the terminator and dropping
+    /// comment entries.
+    /// </summary>
+    /// <remarks>
+    /// The declared count has already been bounded against the block's real size,
+    /// so the list can be sized up front. A table that runs out before a terminator
+    /// appears is accepted - the count said how many there were and they were all
+    /// read - because refusing it would reject an image over a missing sentinel
+    /// that carries no information the count did not already give.
+    /// </remarks>
+    private static Result<List<ChunkDescriptor>> ParseChunks(
+        ReadOnlySpan<byte> block,
+        uint chunkCount,
+        ulong regionSectorCount,
+        string region)
+    {
+        var chunks = new List<ChunkDescriptor>((int)Math.Min(chunkCount, 1024));
+
+        for (uint index = 0; index < chunkCount; index++)
+        {
+            int offset = ChunkTableOffset + ((int)index * ChunkDescriptorSize);
+            Result<ChunkDescriptor> read = ChunkDescriptor.Parse(block, offset);
+
+            if (!read.TryGetValue(out ChunkDescriptor chunk))
+            {
+                return read.CastFailure<List<ChunkDescriptor>>();
+            }
+
+            if (chunk.IsTerminator)
+            {
+                return Result<List<ChunkDescriptor>>.Success(chunks);
+            }
+
+            if (chunk.IsComment)
+            {
+                continue;
+            }
+
+            Result<ulong> end = BigEndian.Add(chunk.SectorNumber, chunk.SectorCount, "chunk extent");
+
+            if (!end.TryGetValue(out ulong endSector))
+            {
+                return end.CastFailure<List<ChunkDescriptor>>();
+            }
+
+            if (endSector > regionSectorCount)
+            {
+                return Result<List<ChunkDescriptor>>.Failure(
+                    DmgExitCode.CorruptImage,
+                    $"A chunk in {region} runs past the end of its own region.",
+                    $"Chunk {index} covers sectors {chunk.SectorNumber}..{endSector} " +
+                    $"of a {regionSectorCount}-sector region.");
+            }
+
+            Result<ulong> compressedEnd = chunk.CompressedEndOffset();
+
+            if (!compressedEnd.Ok)
+            {
+                return compressedEnd.CastFailure<List<ChunkDescriptor>>();
+            }
+
+            chunks.Add(chunk);
+        }
+
+        return Result<List<ChunkDescriptor>>.Success(chunks);
     }
 }

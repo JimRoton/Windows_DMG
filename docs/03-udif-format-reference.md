@@ -157,7 +157,7 @@ chunk's zlib entry type — and neither block size divides.
 | Offset | Size | Field | Meaning |
 | --- | --- | --- | --- |
 | `0x00` | 4 | **EntryType** | compression method — table below |
-| `0x04` | 4 | Comment | usually 0; `+beg` / `+end` on comment entries |
+| `0x04` | 4 | Comment | `+beg` / `+end` on comment entries; **junk on ordinary ones** |
 | `0x08` | 8 | **SectorNumber** | start sector, *relative to the mish block's FirstSectorNumber* |
 | `0x10` | 8 | **SectorCount** | uncompressed length in 512-byte sectors |
 | `0x18` | 8 | **CompressedOffset** | byte offset into the data fork, relative to `DataForkOffset` |
@@ -189,7 +189,16 @@ absoluteStartSector = mish.FirstSectorNumber + chunk.SectorNumber
 ```
 
 This is a common source of bugs: `SectorNumber` is relative to the mish block, not
-to the disk.
+to the disk. It hides well, because the first region normally starts at sector 0,
+where relative and absolute agree — the damage only shows up in the second region.
+Verified: in a UDZO fixture the FAT32 region has `FirstSectorNumber = 1` and its
+first chunk has `SectorNumber = 0`, i.e. absolute sector 1.
+
+Two more things a fixture shows that the tables above do not: the `Comment` word
+at `0x04` is **not** 0 on ordinary chunks (hdiutil wrote `0x75` on every zlib
+chunk), so nothing may be inferred from it; and the terminator entry carries
+`SectorNumber == the region's SectorCount` with a zero count, which is another way
+to spot the relative/absolute mistake.
 
 ---
 
