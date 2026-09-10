@@ -41,34 +41,74 @@ argument for the pattern.
 
 Magic `encrcdsa` = `0x65 6E 63 72 63 64 73 61` at offset 0.
 
-| Offset | Size | Field | Notes |
+> **Corrected 2026-09-10 against `fixtures/generated/exfat-enc256.dmg` and
+> `exfat-enc128.dmg`.** The table below originally had every field from `0x010`
+> onward shifted four bytes too high — it allowed six words between `EncIvSize`
+> and the UUID where the format has five — and it flattened the key material into
+> the fixed header. It does not live there: the header ends with a **key count**
+> and a **key-pointer table**, and the KDF parameters live in a separate
+> descriptor the table points at. The old table also claimed a 4096-byte
+> `BlockSize`; `hdiutil` writes **512**. Every offset below was read off bytes
+> Apple wrote, and each variable-length field's container size is confirmed by
+> where its zero padding starts.
+
+### 2.1 Fixed header
+
+| Offset | Size | Field | Observed |
 | --- | --- | --- | --- |
 | `0x000` | 8 | Signature | `encrcdsa` |
 | `0x008` | 4 | Version | 2 |
-| `0x00C` | 4 | EncIvSize | 16 |
-| `0x010` | 4 | EncMode | |
-| `0x014` | 4 | EncAlgorithm | |
-| `0x018` | 4 | EncPadding | |
-| `0x01C` | 4 | EncKeyBits | 128 or 256 |
-| `0x020` | 4 | PrngAlgorithm | |
-| `0x024` | 4 | PrngKeySize | |
-| `0x028` | 16 | Uuid | |
-| `0x038` | 4 | **BlockSize** | 4096 in practice |
-| `0x03C` | 8 | **DataSize** | plaintext length |
-| `0x044` | 8 | **DataOffset** | where ciphertext starts |
-| `0x04C` | 4 | KdfAlgorithm | 103 = PBKDF2 |
-| `0x050` | 4 | KdfPrngAlgorithm | 1 = HMAC-SHA1 |
-| `0x054` | 4 | **KdfIterationCount** | typically 250 000 |
-| `0x058` | 4 | KdfSaltLen | 20 |
-| `0x05C` | 32 | **KdfSalt** | first `KdfSaltLen` bytes are significant |
-| `0x07C` | 4 | BlobEncIvSize | 8 |
-| `0x080` | 32 | **BlobEncIv** | first `BlobEncIvSize` bytes; the 3DES IV |
-| `0x0A0` | 4 | BlobEncKeyBits | 192 |
-| `0x0A4` | 4 | BlobEncAlgorithm | 17 = 3DES |
-| `0x0A8` | 4 | BlobEncPadding | |
-| `0x0AC` | 4 | BlobEncMode | 2 = CBC |
-| `0x0B0` | 4 | **EncryptedKeyblobSize** | |
-| `0x0B4` | 48 | **EncryptedKeyblob** | up to `EncryptedKeyblobSize` bytes |
+| `0x00C` | 4 | EncIvSize | 16 — the per-block AES IV |
+| `0x010` | 4 | EncMode | 5 (`CSSM_ALGMODE_CBC_IV8`) |
+| `0x014` | 4 | EncAlgorithm | `0x80000001` — Apple's `CSSM_ALGID_AES` |
+| `0x018` | 4 | **EncKeyBits** | 256 in enc256, 128 in enc128 |
+| `0x01C` | 4 | PrngAlgorithm | 91 |
+| `0x020` | 4 | PrngKeySize | 160 |
+| `0x024` | 16 | Uuid | |
+| `0x034` | 4 | **BlockSize** | **512**, not 4096 |
+| `0x038` | 8 | **DataSize** | plaintext length; 12 582 912 in both fixtures |
+| `0x040` | 8 | **DataOffset** | 122 368; `DataOffset + DataSize == fileLength` exactly |
+| `0x048` | 4 | **KeyCount** | 1 |
+| `0x04C` | 20 × KeyCount | Key-pointer table | see below |
+
+There is no `EncPadding` word. That was the phantom field that shifted everything
+else; `EncKeyBits` is at `0x018`, which is the single most load-bearing correction
+here — reading 128/256 from the wrong offset silently mis-sizes the AES key.
+
+### 2.2 Key-pointer table
+
+One 20-byte entry per key, starting at `0x04C`:
+
+| Offset | Size | Field | Observed |
+| --- | --- | --- | --- |
+| `+0x00` | 4 | Type | 1 = wrapped with a passphrase-derived key |
+| `+0x04` | 8 | Offset | `0x60` — absolute file offset of the descriptor |
+| `+0x0C` | 8 | Size | 616 |
+
+Type 1 is the only kind this build unwraps. A certificate- or keychain-unlocked
+image carries a different type and is refused by name (exit 3), not reported as a
+wrong passphrase.
+
+### 2.3 Key descriptor
+
+At the offset the table gives — `0x60` in every image seen so far, but the pointer
+is authoritative:
+
+| Offset | Size | Field | Observed |
+| --- | --- | --- | --- |
+| `+0x00` | 4 | KdfAlgorithm | 103 = PBKDF2 |
+| `+0x04` | 4 | KdfPrngAlgorithm | **0**, not 1 |
+| `+0x08` | 4 | **KdfIterationCount** | 500 000 / 555 555 — calibrated per machine |
+| `+0x0C` | 4 | KdfSaltLen | 20 |
+| `+0x10` | 32 | **KdfSalt** | first `KdfSaltLen` bytes significant, rest zero |
+| `+0x30` | 4 | BlobEncIvSize | 8 |
+| `+0x34` | 32 | **BlobEncIv** | first `BlobEncIvSize` bytes significant |
+| `+0x54` | 4 | BlobEncKeyBits | 192 |
+| `+0x58` | 4 | BlobEncAlgorithm | `0x80000001` = **AES**, not 17 = 3DES |
+| `+0x5C` | 4 | BlobEncPadding | 7 = PKCS#7 |
+| `+0x60` | 4 | BlobEncMode | 6 = `CSSM_ALGMODE_CBCPadIV8`, not 2 |
+| `+0x64` | 4 | **EncryptedKeyblobSize** | 64 (AES-256) / 48 (AES-128) |
+| `+0x68` | descriptor size − `0x68` | **EncryptedKeyblob** | 512-byte container |
 
 The header region is padded out; `DataOffset` is authoritative for where ciphertext
 begins — do not assume a fixed header size.
