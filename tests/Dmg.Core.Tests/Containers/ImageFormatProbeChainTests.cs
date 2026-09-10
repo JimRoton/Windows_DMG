@@ -89,13 +89,16 @@ public sealed class ImageFormatProbeChainTests
     public void TheVersionOneTrailingMagicIsRecognisedToo()
     {
         // Version 1 put its header at the end of the file. It is a museum piece, but
-        // a museum piece with a name is better than an unrecognised file.
+        // a museum piece with a name is better than an unrecognised file - and it is
+        // UnsupportedFormat rather than DecryptionFailed: no passphrase this tool
+        // could be handed would ever open a layout it has never parsed, so it must
+        // not be told "try again".
         byte[] file = new byte[2048];
         Ascii("cdsaencr").CopyTo(file, 2048 - 256);
 
         DmgError error = Refused(file);
 
-        Assert.Equal(DmgExitCode.DecryptionFailed, error.Code);
+        Assert.Equal(DmgExitCode.UnsupportedFormat, error.Code);
         Assert.Contains("version 1", error.Detail ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -223,7 +226,8 @@ public sealed class ImageFormatProbeChainTests
     public void APassphraseCannotOpenTheLegacyVersionOneLayout()
     {
         // No passphrase reaches a v1 header at all - IsEncrcdsaV2 says no before any
-        // key material is touched - so the refusal is exactly the unencrypted one.
+        // key material is touched - so the refusal is exactly the unencrypted one:
+        // named, and UnsupportedFormat, not DecryptionFailed.
         byte[] file = new byte[2048];
         Ascii("cdsaencr").CopyTo(file, 2048 - 256);
 
@@ -233,7 +237,27 @@ public sealed class ImageFormatProbeChainTests
             "irrelevant"u8);
 
         Assert.False(result.Ok);
-        Assert.Equal(DmgExitCode.DecryptionFailed, result.Error.Code);
+        Assert.Equal(DmgExitCode.UnsupportedFormat, result.Error.Code);
+    }
+
+    [Fact]
+    public void AKeyUnlockedByACertificateOrKeychainIsRefusedByNameNotAsAWrongPassphrase()
+    {
+        // S4.8's other refusal-by-name: a key-pointer entry whose type is not 1
+        // (EncryptedDmgHeader.PassphraseKeyType) means the image is unlocked by a
+        // certificate or a keychain entry, not a passphrase - already caught at
+        // header-parse time since S4.1. This confirms it still reaches the caller
+        // as UnsupportedFormat through the passphrase-aware entry point, and is
+        // never misreported as a wrong passphrase just because one was offered.
+        EncryptedHeaderBuilder builder = new() { KeyType = 2 };
+
+        using MemoryStream stream = new(builder.ToFile(new byte[builder.DataSize]), writable: false);
+        Result<ImageFormatDetection> result = ImageFormatProbeChain.Default.Identify(
+            stream,
+            "any-passphrase-at-all"u8);
+
+        Assert.False(result.Ok);
+        Assert.Equal(DmgExitCode.UnsupportedFormat, result.Error.Code);
     }
 
     private static byte[] Payload(int length)
