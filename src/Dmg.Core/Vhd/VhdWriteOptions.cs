@@ -59,6 +59,41 @@ public sealed record VhdWriteOptions
     public int BufferSize { get; init; } = DefaultBufferSize;
 
     /// <summary>
+    /// Which kind of VHD to write. <see cref="VhdDiskType.Fixed"/> by default, and
+    /// that is the only value v1 ships with on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Fixed is the default because fixed is the boring one.</b> The payload is
+    /// laid down verbatim with a footer on the end: there is no allocation table to
+    /// get wrong, nothing for the Windows VHD provider to misinterpret, and a
+    /// half-written file is obviously a half-written file. That is worth a great
+    /// deal more in a tool that mounts untrusted images than the scratch space a
+    /// dynamic disk saves.
+    /// </para>
+    /// <para>
+    /// <see cref="VhdDiskType.Dynamic"/> is behind this flag for images where the
+    /// saving is the point - a 48 GB volume with 400 MB in it costs 400 MB of
+    /// scratch instead of 48 GB. It is opt-in until it has been exercised against
+    /// a real Windows VHD provider on real images.
+    /// </para>
+    /// </remarks>
+    public VhdDiskType DiskType { get; init; } = VhdDiskType.Fixed;
+
+    /// <summary>
+    /// The dynamic disk's block size. Ignored for a fixed disk. 2 MiB by default,
+    /// which is what every VHD in the wild uses.
+    /// </summary>
+    /// <remarks>
+    /// Settable so the tests can reach the interesting cases - a partly allocated
+    /// table, a short final block - in a kilobyte-sized image rather than a
+    /// gigabyte-sized one. Changing it in the product is not something a user
+    /// should be offered: the specification permits any power of two, but 2 MiB is
+    /// the size Windows is actually exercised against.
+    /// </remarks>
+    public int BlockSize { get; init; } = VhdDynamicHeader.DefaultBlockSize;
+
+    /// <summary>
     /// The disk's unique identifier, or null to generate a fresh one per write.
     /// </summary>
     public Guid? UniqueId { get; init; }
@@ -107,6 +142,20 @@ public sealed record VhdWriteOptions
             return Result<VhdWriteOptions>.Failure(DmgError.Internal(
                 "The VHD copy buffer must be a whole number of 512-byte sectors.",
                 $"buffer {BufferSize} bytes leaves {BufferSize % VhdFooter.SectorSize} over"));
+        }
+
+        if (DiskType is not (VhdDiskType.Fixed or VhdDiskType.Dynamic))
+        {
+            return Result<VhdWriteOptions>.Failure(DmgError.Internal(
+                "This writer produces fixed and dynamic VHDs and nothing else.",
+                $"requested disk type {DiskType}"));
+        }
+
+        Result blockSize = VhdDynamicHeader.ValidateBlockSize(BlockSize);
+
+        if (!blockSize.Ok)
+        {
+            return blockSize.CastFailure<VhdWriteOptions>();
         }
 
         return Result<VhdWriteOptions>.Success(this);

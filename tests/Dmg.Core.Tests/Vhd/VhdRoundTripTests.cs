@@ -325,7 +325,7 @@ public sealed class VhdRoundTripTests : IDisposable
     /// test that only works while the image fits in memory is not testing the
     /// thing the writer exists for.
     /// </remarks>
-    private static long Compare(Stream expected, Stream actual, long length)
+    internal static long Compare(Stream expected, Stream actual, long length)
     {
         byte[] left = new byte[64 * 1024];
         byte[] right = new byte[64 * 1024];
