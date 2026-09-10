@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Dmg.Core is portable on purpose. It must build, and its tests must run, on
+    macOS - that is how the format work gets verified against hdiutil-produced
+    fixtures. Nothing Windows-specific may ever land here: no net*-windows TFM,
+    no P/Invoke to a Windows DLL, no reference to Dmg.Windows.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Dmg.Core</RootNamespace>
+    <AssemblyName>Dmg.Core</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Every Windows-only concern lives here: virtdisk.dll P/Invoke, volume and
+    drive-letter handling, and the mount registry. Console-only - no WPF, no
+    WinForms - so it cross-builds cleanly from macOS.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Dmg.Windows</RootNamespace>
+    <AssemblyName>Dmg.Windows</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dmg.Core\Dmg.Core.csproj" />
+  </ItemGroup>
+
+</Project>
