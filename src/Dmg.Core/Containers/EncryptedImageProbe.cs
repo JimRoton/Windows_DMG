@@ -25,6 +25,15 @@ namespace Dmg.Core.Containers;
 /// unencrypted file would, and this probe never has to know what came out the
 /// other side.
 /// </para>
+/// <para>
+/// <b>Version 1 is not the same refusal as version 2.</b> A v2 header just needs a
+/// passphrase this build cannot yet supply on its own - <see cref="DmgExitCode.DecryptionFailed"/>,
+/// the code a caller with a passphrase branches on. A v1 header is a layout this
+/// build has never parsed, passphrase or not - <see cref="DmgExitCode.UnsupportedFormat"/>,
+/// the same code every other format this tool declines to read gets. Conflating the
+/// two would tell someone holding the right passphrase for a v1 image that a retry
+/// might work; it never will.
+/// </para>
 /// </remarks>
 public sealed class EncryptedImageProbe : IImageFormatProbe
 {
@@ -64,14 +73,25 @@ public sealed class EncryptedImageProbe : IImageFormatProbe
                 ImageFormatSignatures.DescribeLeadingBytes(image.Header)));
         }
 
-        string what = version2 ? "encrcdsa (version 2)" : "cdsaencr (version 1)";
+        if (version1)
+        {
+            // Named and refused outright. Nobody's passphrase will ever change this
+            // answer, so it must never be DecryptionFailed - that code tells a
+            // caller "try again with a passphrase", and there is no build of this
+            // tool that reads a v1 layout no matter what passphrase arrives.
+            return Result<ImageFormatDetection>.Failure(
+                DmgExitCode.UnsupportedFormat,
+                $"{image.Describe()} is a legacy cdsaencr (version 1) encrypted disk image, "
+                + "from the FileVault era. Its header sits at the end of the file in a "
+                + "different layout from version 2's, and this build has never parsed it.",
+                $"Encrypted image header cdsaencr (version 1) in a {image.Length}-byte file.");
+        }
 
         return Result<ImageFormatDetection>.Failure(
             DmgExitCode.DecryptionFailed,
-            $"{image.Describe()} is an encrypted disk image and needs a passphrase. "
-            + "This build cannot decrypt images, so there is nothing it can do with it yet; "
-            + "open it on a Mac, or use a build with decryption support.",
-            $"Encrypted image header {what} in a {image.Length}-byte file.");
+            $"{image.Describe()} is an encrypted disk image and needs a passphrase to open. "
+            + "Use --password-stdin, --password-env VAR, or answer the prompt.",
+            $"Encrypted image header encrcdsa (version 2) in a {image.Length}-byte file.");
     }
 
     /// <summary>
