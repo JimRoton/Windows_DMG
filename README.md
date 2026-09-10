@@ -25,7 +25,7 @@ backlog are complete and awaiting review.
 | [docs/04-encrypted-dmg-reference.md](docs/04-encrypted-dmg-reference.md) | `encrcdsa` v2 encryption and how to unwrap it |
 | [docs/05-testing-strategy.md](docs/05-testing-strategy.md) | Fixtures, CI, and how to test Windows code from a Mac |
 | [docs/adr/](docs/adr/) | The six decisions that shape everything else |
-| [BACKLOG.md](BACKLOG.md) | 10 epics, 63 stories |
+| [BACKLOG.md](BACKLOG.md) | 10 epics, 77 stories |
 | [KANBAN.md](KANBAN.md) | Board state |
 
 ## The short version
