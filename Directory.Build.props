@@ -1,0 +1,31 @@
+<Project>
+
+  <!--
+    Repository-wide build settings.
+
+    These are the non-negotiables from the architecture: nullable reference types
+    on, every warning fatal, no ICU dependency, and the analyzers that keep the
+    code NativeAOT-safe. Individual projects opt in to AOT/trim analysis with
+    IsAotCompatible; test projects deliberately do not.
+
+    There are no PackageReference items anywhere under src/ and there never will
+    be - see ADR "zero third-party runtime dependencies". CI enforces it.
+  -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningLevel>9999</WarningLevel>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <Authors>Jim Roton</Authors>
+    <Product>Windows_DMG</Product>
+    <Copyright>Copyright (c) Jim Roton</Copyright>
+  </PropertyGroup>
+
+</Project>

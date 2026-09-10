@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The dmg.exe entry point. Ships as a single NativeAOT binary, which is why
+    PublishAot is set here rather than only on the publish command line: the AOT
+    analyzers then run on every build and a trim-hostile pattern fails fast.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Dmg.Cli</RootNamespace>
+    <AssemblyName>dmg</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
+    <IsPackable>false</IsPackable>
+    <InvariantTimezone>true</InvariantTimezone>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dmg.Core\Dmg.Core.csproj" />
+    <ProjectReference Include="..\Dmg.Windows\Dmg.Windows.csproj" />
+  </ItemGroup>
+
+</Project>
