@@ -179,7 +179,9 @@ true, unhelpful, and the most common thing a user of this tool will ever see.
 
 ## 4. Block decryption
 
-Blocks are `BlockSize` bytes (4096) and each has its own IV derived from its index:
+Blocks are `BlockSize` bytes — **512** in every image `hdiutil` has been seen to
+write, not the 4096 this document originally claimed — and each has its own IV
+derived from its index:
 
 ```
 for block N (0-based, relative to DataOffset):
@@ -188,20 +190,25 @@ for block N (0-based, relative to DataOffset):
 ```
 
 Because the IV is a pure function of the block number, the stream is **randomly
-seekable** — which is exactly what `UdifReader` needs to read a trailer at the end
-of a multi-gigabyte file without decrypting everything before it.
+seekable** — which is exactly what the container reader above needs to read a
+trailer at the end of a multi-gigabyte file without decrypting everything before
+it. Read the block size from the header rather than assuming either number: it is
+what decides where block N starts, so a wrong constant decrypts the whole payload
+to noise.
 
 ```csharp
-// Read a single 4096-byte plaintext block at index n.
+// Read a single plaintext block at index n.
 Span<byte> ivFull = stackalloc byte[20];
 Span<byte> counter = stackalloc byte[4];
 BinaryPrimitives.WriteUInt32BigEndian(counter, (uint)n);
-HMACSHA1.HashData(_hmacKey, counter, ivFull);
+HMACSHA1.HashData(hmacKey, counter, ivFull);
 // iv = ivFull[..16]
 ```
 
 The final block may be short: `DataSize` gives the true plaintext length, and the
-stream must report that as `Length` rather than `ciphertextLength`.
+stream must report that as `Length` rather than `ciphertextLength`. Reporting the
+ciphertext length instead puts the koly trailer in the wrong place and a perfectly
+good image comes back as "not a DMG".
 
 ---
 
