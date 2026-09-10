@@ -61,6 +61,9 @@ public static class FilesystemProbe
             FilesystemKind.Fat32 or FilesystemKind.Fat16 or FilesystemKind.Fat12 =>
                 FatProbe.Probe(volume, head),
             FilesystemKind.Ntfs => NtfsProbe.Probe(volume, head),
+            FilesystemKind.HfsPlus or FilesystemKind.Hfs =>
+                AppleFilesystemProbes.ProbeHfsPlus(volume, head),
+            FilesystemKind.Apfs => AppleFilesystemProbes.ProbeApfs(volume, head),
             FilesystemKind.Unknown => Result<FilesystemInfo>.Success(
                 new FilesystemInfo { Kind = FilesystemKind.Unknown }),
             _ => Result<FilesystemInfo>.Success(new FilesystemInfo { Kind = kind }),
