@@ -12,12 +12,15 @@ whole point: they are the ground truth our reader is measured against.
 | `tools/make-manifest.sh` | yes | Generates `manifest.json`. |
 | `fixtures/manifest.json` | yes | Recipe + size + ground-truth SHA-256 per fixture. |
 | `fixtures/generated/` | **no** (gitignored) | The `.dmg` files themselves. |
+| `tools/make-hostile-corpus.py` | yes | Mutates a good fixture into the hostile corpus. |
+| `fixtures/hostile/` | **no** (gitignored) | Deliberately malformed images + `cases.json`. |
 
 The images are not committed. Regenerate them with:
 
 ```sh
 tools/make-fixtures.sh      # writes fixtures/generated/, ~37 MB total
 tools/make-manifest.sh      # refreshes fixtures/manifest.json
+tools/make-hostile-corpus.py  # writes fixtures/hostile/, ~43 MB total
 ```
 
 Both scripts are idempotent and safe to re-run; they rebuild from scratch each
@@ -129,6 +132,45 @@ Each record also carries `image_sha256`, the hash of the `.dmg` container
 itself, so a test can tell "the manifest is stale relative to these fixtures"
 apart from "the reader decoded the image wrongly" — which are otherwise the
 same symptom.
+
+## The hostile corpus
+
+`fixtures/hostile/` is the other half of the ground truth: 38 images that are
+deliberately wrong, each one a mutation of `fixtures/generated/exfat-zlib.dmg`
+with a single field or region broken on purpose. It is built by
+`tools/make-hostile-corpus.py`, which never calls `hdiutil` — it reads one
+already-generated file and writes new ones, so none of the device-detach
+hazards below apply to it.
+
+Mutation rather than synthesis is the point. A hand-rolled malformed image only
+proves the reader survives structures we thought of; mutating an image Apple
+actually wrote leaves every field we did not break byte-for-byte genuine, so a
+case that fails fails for the reason it names.
+
+The corpus reaches eight structural boundaries — `koly`, `plist`, `mish`,
+`chunk-table`, `chunk`, `extent-map`, `data-fork` and `codec` — and covers
+truncation at each of them, a `CompressedOffset` past EOF, a `CompressedLength`
+of `0xFFFFFFFFFFFFFFFF`, `SectorCount` values that overflow when multiplied by
+512, overlapping extents, a gap between extents, a billion-laughs entity bomb, a
+chunk count that would exhaust memory if allocated naively, and koly
+`XMLOffset`/`XMLLength` values pointing outside the file.
+
+`fixtures/hostile/cases.json` carries, per case, the mutation, the exit code the
+reader is contractually required to produce, a wall-clock budget and a
+managed-allocation ceiling. Keeping all three next to the mutation that
+motivates them is deliberate: an expectation table living somewhere else drifts
+out of step with the bytes.
+`tests/Dmg.Core.Tests/Containers/HostileCorpusTests.cs` consumes it and asserts
+all three properties on every case, so a hang fails the test rather than passing
+slowly and a four-gibibyte buffer fails it rather than quietly succeeding on a
+big enough machine.
+
+The generator is deterministic: the same source fixture produces byte-identical
+mutants and identical `sha256` fields. It is not, however, portable across
+regenerations of the good corpus — `hdiutil` bakes fresh UUIDs into every image
+it writes, so `fixtures/generated/` and `fixtures/hostile/` must be regenerated
+together. Each record's size is re-checked at load time so a stale corpus is
+reported as drift instead of silently testing the wrong bytes.
 
 ## Notes and limitations
 
