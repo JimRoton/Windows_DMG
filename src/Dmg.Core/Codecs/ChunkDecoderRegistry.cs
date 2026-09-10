@@ -108,6 +108,13 @@ public sealed class ChunkDecoderRegistry
         }
 
         _supportedEntryTypes = [.. _decoders.Keys.Order()];
+
+        UnsupportedCodecs =
+        [
+            .. ChunkEntryType.Known
+                .Where(type => !ChunkEntryType.IsStructural(type) && !_decoders.ContainsKey(type))
+                .Select(Describe),
+        ];
     }
 
     /// <summary>
@@ -118,6 +125,18 @@ public sealed class ChunkDecoderRegistry
 
     /// <summary>The entry types this build can actually decode, ascending.</summary>
     public IReadOnlyList<uint> SupportedEntryTypes => _supportedEntryTypes;
+
+    /// <summary>
+    /// The codecs the UDIF format defines that this registry has no decoder for -
+    /// bzip2, LZFSE and LZMA in a stock build.
+    /// </summary>
+    /// <remarks>
+    /// The list every "which images can this tool open?" answer comes from, and the
+    /// one <c>dmg info</c> checks an image's chunk table against. It is derived from
+    /// what is registered rather than hand-maintained, so implementing one of these
+    /// removes it from here by itself.
+    /// </remarks>
+    public IReadOnlyList<ChunkCodecInfo> UnsupportedCodecs { get; }
 
     /// <summary>True when a decoder is registered for <paramref name="entryType"/>.</summary>
     public bool IsSupported(uint entryType) => _decoders.ContainsKey(entryType);
@@ -278,14 +297,28 @@ public sealed class ChunkDecoderRegistry
     /// know it, so the user is told "bzip2 chunks are not supported" rather than a
     /// bare hexadecimal number.
     /// </summary>
-    private static DmgError UnsupportedEntryType(uint entryType) =>
-        ChunkEntryType.IsStructural(entryType)
-            ? DmgError.Corrupt(
+    private DmgError UnsupportedEntryType(uint entryType)
+    {
+        if (ChunkEntryType.IsStructural(entryType))
+        {
+            return DmgError.Corrupt(
                 $"A {ChunkEntryType.NameOf(entryType)} entry was handed to the decoder.",
-                $"EntryType 0x{entryType:X8} carries no payload and must be skipped, not decoded.")
-            : DmgError.Unsupported(
+                $"EntryType 0x{entryType:X8} carries no payload and must be skipped, not decoded.");
+        }
+
+        string supported = string.Join(
+            ", ",
+            _supportedEntryTypes.Select(ChunkEntryType.NameOf));
+
+        return ChunkEntryType.IsRecognised(entryType)
+            ? DmgError.Unsupported(
                 $"This image uses {ChunkEntryType.NameOf(entryType)} chunks, which this build cannot decode.",
-                $"EntryType 0x{entryType:X8}.");
+                $"EntryType 0x{entryType:X8}. Supported chunk codecs: {supported}.")
+            : DmgError.Unsupported(
+                $"This image uses a chunk type that is not in the UDIF format: {ChunkEntryType.NameOf(entryType)}.",
+                $"EntryType 0x{entryType:X8}. Either the chunk table is damaged or the "
+                + $"image was written by something newer than this build. Supported chunk codecs: {supported}.");
+    }
 
     /// <summary>
     /// Every codec this build implements. Stories add to this list; nothing else

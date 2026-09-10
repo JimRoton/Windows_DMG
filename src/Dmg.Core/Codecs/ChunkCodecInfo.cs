@@ -29,6 +29,13 @@ public sealed record ChunkCodecInfo(
     /// </summary>
     public bool IsUnsupportedPayload => !IsSupported && !IsStructural;
 
+    /// <summary>
+    /// True when the format defines this entry type, whether or not we decode it.
+    /// False means the value is not in the format at all, which usually means a
+    /// damaged chunk table rather than a codec we are missing.
+    /// </summary>
+    public bool IsRecognised => ChunkEntryType.IsRecognised(EntryType);
+
     /// <inheritdoc />
     public override string ToString() =>
         IsSupported || IsStructural ? Name : $"{Name} (unsupported)";
