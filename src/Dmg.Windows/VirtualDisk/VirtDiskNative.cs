@@ -28,36 +28,6 @@ internal static partial class VirtDiskNative
     /// <summary><c>VIRTUAL_STORAGE_TYPE_DEVICE_VHD</c>.</summary>
     internal const uint StorageTypeDeviceVhd = 2;
 
-    /// <summary><c>VIRTUAL_DISK_ACCESS_ATTACH_RO</c>.</summary>
-    internal const uint AccessAttachReadOnly = 0x0001_0000;
-
-    /// <summary><c>VIRTUAL_DISK_ACCESS_ATTACH_RW</c>.</summary>
-    internal const uint AccessAttachReadWrite = 0x0002_0000;
-
-    /// <summary><c>VIRTUAL_DISK_ACCESS_DETACH</c>.</summary>
-    internal const uint AccessDetach = 0x0004_0000;
-
-    /// <summary><c>VIRTUAL_DISK_ACCESS_GET_INFO</c>.</summary>
-    internal const uint AccessGetInfo = 0x0008_0000;
-
-    /// <summary><c>OPEN_VIRTUAL_DISK_FLAG_NONE</c>.</summary>
-    internal const uint OpenFlagNone = 0;
-
-    /// <summary><c>ATTACH_VIRTUAL_DISK_FLAG_NONE</c>.</summary>
-    internal const uint AttachFlagNone = 0;
-
-    /// <summary><c>ATTACH_VIRTUAL_DISK_FLAG_READ_ONLY</c>.</summary>
-    internal const uint AttachFlagReadOnly = 0x0000_0001;
-
-    /// <summary><c>ATTACH_VIRTUAL_DISK_FLAG_NO_DRIVE_LETTER</c>.</summary>
-    internal const uint AttachFlagNoDriveLetter = 0x0000_0002;
-
-    /// <summary><c>ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME</c>.</summary>
-    internal const uint AttachFlagPermanentLifetime = 0x0000_0004;
-
-    /// <summary><c>DETACH_VIRTUAL_DISK_FLAG_NONE</c>.</summary>
-    internal const uint DetachFlagNone = 0;
-
     /// <summary><c>ATTACH_VIRTUAL_DISK_VERSION_1</c>.</summary>
     internal const uint AttachParametersVersion1 = 1;
 

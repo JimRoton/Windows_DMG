@@ -50,16 +50,13 @@ public sealed class WindowsVirtualDiskService : IVirtualDiskService
         // The access mask must already allow what the caller will go on to do:
         // asking for a read-write attach through a read-only handle fails, which is
         // exactly why the mode is fixed here and carried on the handle.
-        uint accessMask = VirtDiskNative.AccessGetInfo | VirtDiskNative.AccessDetach | (
-            mode == VirtualDiskAccessMode.ReadWrite
-                ? VirtDiskNative.AccessAttachReadWrite
-                : VirtDiskNative.AccessAttachReadOnly);
+        uint accessMask = VirtualDiskFlags.ComposeAccessMask(mode);
 
         uint error = VirtDiskNative.OpenVirtualDisk(
             in storageType,
             vhdPath,
             accessMask,
-            VirtDiskNative.OpenFlagNone,
+            VirtualDiskFlags.OpenNone,
             nint.Zero,
             out nint rawHandle);
 
@@ -91,22 +88,7 @@ public sealed class WindowsVirtualDiskService : IVirtualDiskService
             return resolved.CastFailure<VirtualDiskAttachment>();
         }
 
-        uint flags = VirtDiskNative.AttachFlagNone;
-
-        if (native.Mode == VirtualDiskAccessMode.ReadOnly)
-        {
-            flags |= VirtDiskNative.AttachFlagReadOnly;
-        }
-
-        if (options.PermanentLifetime)
-        {
-            flags |= VirtDiskNative.AttachFlagPermanentLifetime;
-        }
-
-        if (options.NoDriveLetter)
-        {
-            flags |= VirtDiskNative.AttachFlagNoDriveLetter;
-        }
+        uint flags = VirtualDiskFlags.ComposeAttachFlags(native.Mode, options);
 
         VirtDiskNative.AttachVirtualDiskParameters parameters = new()
         {
@@ -159,7 +141,7 @@ public sealed class WindowsVirtualDiskService : IVirtualDiskService
 
         uint error = VirtDiskNative.DetachVirtualDisk(
             native.Handle,
-            VirtDiskNative.DetachFlagNone,
+            VirtualDiskFlags.DetachNone,
             providerSpecificFlags: 0);
 
         return VirtualDiskErrors.Succeeded(error)
