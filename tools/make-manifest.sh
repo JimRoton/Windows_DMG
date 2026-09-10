@@ -120,9 +120,10 @@ dev_of() { printf '%s\n' "$1" | grep -Eo '^/dev/disk[0-9]+' | head -1; }
 # fixtures/README.md and the build order in tools/make-fixtures.sh. Recipes
 # deliberately use single quotes so they need no JSON escaping.
 #
-# BASE is the shared 12 MiB exFAT source image that eight fixtures derive from;
-# all eight therefore decode to the same raw sector stream, which is what makes
-# a codec-vs-codec equality test possible.
+# BASE is the shared 12 MiB exFAT source image that seven fixtures derive from;
+# all seven therefore decode to the same raw sector stream, which is what makes
+# a codec-vs-codec equality test possible - raw against zlib against ADC on
+# bytes that are identical by construction.
 
 BASE_RECIPE="hdiutil create -size 12m -fs exFAT -volname DMGFIX"
 
@@ -131,10 +132,13 @@ meta() {                                  # $1 name -> RECIPE FSYS ENC PURPOSE
     case "$1" in
     exfat-raw.dmg)
         RECIPE="$BASE_RECIPE | hdiutil convert -format UDRW"
-        FSYS=exFAT;   PURPOSE="Raw (uncompressed) UDIF chunks; the happy path." ;;
+        FSYS=exFAT;   PURPOSE="Flat sector image - UDRW has no koly trailer and no chunk table, so despite the name it carries no chunks of any type. The reader must find no container in it." ;;
     exfat-zlib.dmg)
         RECIPE="$BASE_RECIPE | hdiutil convert -format UDZO"
         FSYS=exFAT;   PURPOSE="zlib-compressed chunks; the main case." ;;
+    exfat-udro.dmg)
+        RECIPE="$BASE_RECIPE | hdiutil convert -format UDRO"
+        FSYS=exFAT;   PURPOSE="Genuine raw (0x00000001) UDIF chunks - a real koly + plist + blkx container storing its chunks uncompressed." ;;
     exfat-sparse.dmg)
         RECIPE="hdiutil create -size 48m -fs exFAT -volname DMGSPARSE, one small file | hdiutil convert -format UDZO"
         FSYS=exFAT;   PURPOSE="Mostly empty volume, so most chunks are zero-fill / ignore." ;;
@@ -161,6 +165,9 @@ meta() {                                  # $1 name -> RECIPE FSYS ENC PURPOSE
     adc.dmg)
         RECIPE="$BASE_RECIPE | hdiutil convert -format UDCO"
         FSYS=exFAT;   PURPOSE="Apple ADC decoder." ;;
+    zerofill.dmg)
+        RECIPE="hdiutil create -srcfolder <HELLO.TXT README.TXT DATA.BIN ZEROS.BIN> -fs exFAT -volname DMGZERO -format UDZO"
+        FSYS=exFAT;   PURPOSE="Zero-fill (0x00000000) chunks alongside zlib and ignore. 'create -srcfolder' is the only hdiutil path found that emits zero-fill; every 'convert' recipe uses the codec for zeros and 'ignore' for free space. ZEROS.BIN puts a long zero run inside allocated space." ;;
     multipart.dmg)
         RECIPE="hdiutil create -size 80m -layout NONE -type UDIF | diskutil partitionDisk MBR ExFAT DMGFIXP1 36M ExFAT DMGFIXP2 R | hdiutil convert -format UDZO"
         FSYS="exFAT x2"
@@ -172,8 +179,9 @@ meta() {                                  # $1 name -> RECIPE FSYS ENC PURPOSE
 }
 
 # Build order == manifest order, so the file is stable across runs.
-ORDER="exfat-raw.dmg exfat-zlib.dmg exfat-sparse.dmg exfat-enc256.dmg exfat-enc128.dmg
-       fat32.dmg hfsplus.dmg apfs.dmg bzip2.dmg adc.dmg multipart.dmg"
+ORDER="exfat-raw.dmg exfat-zlib.dmg exfat-udro.dmg exfat-sparse.dmg exfat-enc256.dmg
+       exfat-enc128.dmg fat32.dmg hfsplus.dmg apfs.dmg bzip2.dmg adc.dmg
+       multipart.dmg zerofill.dmg"
 
 # ------------------------------------------------------------------ hashing
 
@@ -366,7 +374,7 @@ cat <<JSON
       "note": "$CC_NOTE"
     }
   },
-  "shared_source_note": "exfat-raw, exfat-zlib, exfat-enc256, exfat-enc128, bzip2 and adc are all converted from one shared 12 MiB exFAT source image, so their decoded_sha256 values must be identical. That equality is itself a test: it isolates the codec and the encryption wrapper from everything else.",
+  "shared_source_note": "exfat-raw, exfat-zlib, exfat-udro, exfat-enc256, exfat-enc128, bzip2 and adc are all converted from one shared 12 MiB exFAT source image, so their decoded_sha256 values must be identical. That equality is itself a test: it isolates the codec and the encryption wrapper from everything else.",
   "count": $NDONE,
   "fixtures": [
 JSON

@@ -13,13 +13,13 @@
     "cross_check": {
       "fixture": "exfat-zlib.dmg",
       "result": "agree",
-      "via_convert": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
-      "via_attach": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "via_convert": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
+      "via_attach": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "note": "Both methods produced the same SHA-256 for exfat-zlib.dmg, so 'convert to .cdr' and 'attach and read /dev/rdiskN' are the same byte stream."
     }
   },
-  "shared_source_note": "exfat-raw, exfat-zlib, exfat-enc256, exfat-enc128, bzip2 and adc are all converted from one shared 12 MiB exFAT source image, so their decoded_sha256 values must be identical. That equality is itself a test: it isolates the codec and the encryption wrapper from everything else.",
-  "count": 11,
+  "shared_source_note": "exfat-raw, exfat-zlib, exfat-udro, exfat-enc256, exfat-enc128, bzip2 and adc are all converted from one shared 12 MiB exFAT source image, so their decoded_sha256 values must be identical. That equality is itself a test: it isolates the codec and the encryption wrapper from everything else.",
+  "count": 13,
   "fixtures": [
     {
       "name": "exfat-raw.dmg",
@@ -27,12 +27,12 @@
       "format": "UDRW",
       "partition_scheme": "fdisk",
       "filesystem": "exFAT",
-      "purpose": "Raw (uncompressed) UDIF chunks; the happy path.",
+      "purpose": "Flat sector image - UDRW has no koly trailer and no chunk table, so despite the name it carries no chunks of any type. The reader must find no container in it.",
       "encrypted": false,
       "image_size": 12582912,
-      "image_sha256": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "image_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "decoded_size": 12582912,
-      "decoded_sha256": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "decoded_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -43,10 +43,24 @@
       "filesystem": "exFAT",
       "purpose": "zlib-compressed chunks; the main case.",
       "encrypted": false,
-      "image_size": 33829,
-      "image_sha256": "13a3ea71c9af0463c80715265d7ca6c944653ddb6f86bea7daec1c8667a24d55",
+      "image_size": 33827,
+      "image_sha256": "4322a136cc7d02088e0a864835d4785ba1e59b234cfa1e18d97e4cffd387e217",
       "decoded_size": 12582912,
-      "decoded_sha256": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "decoded_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
+      "decoded_hash_method": "hdiutil convert -format UDTO"
+    },
+    {
+      "name": "exfat-udro.dmg",
+      "recipe": "hdiutil create -size 12m -fs exFAT -volname DMGFIX | hdiutil convert -format UDRO",
+      "format": "UDRO",
+      "partition_scheme": "fdisk",
+      "filesystem": "exFAT",
+      "purpose": "Genuine raw (0x00000001) UDIF chunks - a real koly + plist + blkx container storing its chunks uncompressed.",
+      "encrypted": false,
+      "image_size": 250322,
+      "image_sha256": "66efda3c6b6cbdd74743e0b1bba4108ecf6051f60194b660e6a286149db6363b",
+      "decoded_size": 12582912,
+      "decoded_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -57,10 +71,10 @@
       "filesystem": "exFAT",
       "purpose": "Mostly empty volume, so most chunks are zero-fill / ignore.",
       "encrypted": false,
-      "image_size": 9551,
-      "image_sha256": "3b7affcf17ab1aef24467e99c429d4b87d0fe8926d4b05df4e9805b5004bace6",
+      "image_size": 9552,
+      "image_sha256": "3b709c95aa1ca570bde9b196f122a0277390efa211468fb6acc50cfc0eb8ba24",
       "decoded_size": 50331648,
-      "decoded_sha256": "f4eb94aad7214b997ebdf20638402d07dd746adac04bf7ca4fd1a0d344adfb8b",
+      "decoded_sha256": "b78de99de59a5c03807a5548760d58976e1475aa7f38ba25d8fb1f5185ece8ed",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -73,9 +87,9 @@
       "encrypted": true,
       "passphrase": "dmg-test-passphrase",
       "image_size": 12705280,
-      "image_sha256": "3c04c88f7e34e80136aace31d829b7d3e106bbc64dd0836d28d1ade8f1ecd4ba",
+      "image_sha256": "2986d8641e345f1bfe4287a2518f5e78da6306bf3f835c217948a1900390b7f9",
       "decoded_size": 12582912,
-      "decoded_sha256": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "decoded_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "decoded_hash_method": "hdiutil attach -stdinpass -nomount -readonly + dd /dev/rdiskN"
     },
     {
@@ -88,9 +102,9 @@
       "encrypted": true,
       "passphrase": "dmg-test-passphrase",
       "image_size": 12705280,
-      "image_sha256": "5a537a72e82b397f1a5588c1c0cc2b0653d3ff7c9ced73372e1481e683ea6193",
+      "image_sha256": "8b33dd048562bdf948942d67786a79e09983149bd01953aa9792fdcf01a23db5",
       "decoded_size": 12582912,
-      "decoded_sha256": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "decoded_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "decoded_hash_method": "hdiutil attach -stdinpass -nomount -readonly + dd /dev/rdiskN"
     },
     {
@@ -101,10 +115,10 @@
       "filesystem": "FAT32",
       "purpose": "FAT32 probe. 48 MiB because FAT32 needs at least 65525 clusters.",
       "encrypted": false,
-      "image_size": 33663,
-      "image_sha256": "ba4f77db912e33c6ef1c7bb31e6450d9681d9d3d01726219297111a6160fd7eb",
+      "image_size": 33665,
+      "image_sha256": "f8a6b48d9e45ef407022fc0a8eb4439244f10d10c3d2be5bafa72ee8304a11fa",
       "decoded_size": 50331648,
-      "decoded_sha256": "66617c4225eaa17656d046d1aa89d8256b2223c5df2aab4e128ce5c7679ced99",
+      "decoded_sha256": "a1c8f7b021a59f3fdd2e77e0a0846f91bb1512f1e282591bfb54f6e19fc68928",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -115,10 +129,10 @@
       "filesystem": "HFS+",
       "purpose": "Negative case - the reader must refuse HFS+.",
       "encrypted": false,
-      "image_size": 42750,
-      "image_sha256": "d1988fa1ffd9eadfbc093a3007b0e515217621ec998c5f3b342038aa4bd1fdb1",
+      "image_size": 42755,
+      "image_sha256": "863fe34a78a87216c468af5055f00dd5a6213853fd417e30945d5389fd5122ce",
       "decoded_size": 12582912,
-      "decoded_sha256": "90b6758f9030f89b42cf085e56548b869cf3c0c98cef4569dc80e146e150adb8",
+      "decoded_sha256": "cd4379ebf2d113744c6162fc3b2bdea06b3b10196b5369a167f4c820e131906c",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -129,10 +143,10 @@
       "filesystem": "APFS",
       "purpose": "Negative case - the reader must refuse APFS. 32 MiB because APFS will not newfs into 12 MiB.",
       "encrypted": false,
-      "image_size": 40883,
-      "image_sha256": "84cdccb0af2cf2a4e9fb22372d43ff2d214c7ccf0e1677490614a6c6a0845863",
+      "image_size": 40888,
+      "image_sha256": "e40dd03a62ba38f63f591285794dacab9e0d697398566766a22777e2d53280d4",
       "decoded_size": 33554432,
-      "decoded_sha256": "0185049e56fa97019ac31d13728a5cd70da4ac6723a33a002bd58bd099a2981a",
+      "decoded_sha256": "2bb36285c02947e1206d9b5aea8f3d3ac0c90a76fda2bfdaff55b9502aea05c2",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -143,10 +157,10 @@
       "filesystem": "exFAT",
       "purpose": "Negative case - bzip2 is an unsupported codec.",
       "encrypted": false,
-      "image_size": 18959,
-      "image_sha256": "a228bd596bafdb90ada003c40290094cf01ce1e3df3a472029d3c662a3e25c89",
+      "image_size": 18944,
+      "image_sha256": "3d8297a5aabd708feda43a017708c237694127083a019a116af0481c2a3a5188",
       "decoded_size": 12582912,
-      "decoded_sha256": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "decoded_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -157,10 +171,10 @@
       "filesystem": "exFAT",
       "purpose": "Apple ADC decoder.",
       "encrypted": false,
-      "image_size": 83776,
-      "image_sha256": "7f1a92898be411defe890ae4316874ee5810479be7603b1ead58eba8ec437498",
+      "image_size": 83770,
+      "image_sha256": "24211760619a9fb13cf4be3a3292c16e492d65905daf6372d26f6e266c81e424",
       "decoded_size": 12582912,
-      "decoded_sha256": "29e186d082625f6d3b615411d3202e2af58cfa699a2fbea5760820900aad89e0",
+      "decoded_sha256": "3fda9f2e91747f3e88ca40e2141092569f8e634b2ddfe1ca222806d324460fe1",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     },
     {
@@ -171,10 +185,24 @@
       "filesystem": "exFAT x2",
       "purpose": "Two data partitions, for partition selection. MBR not GPT - diskutil insists on a 200 MiB EFI partition under GPT.",
       "encrypted": false,
-      "image_size": 19481,
-      "image_sha256": "a6535cf2b0fb7cc8f027d138e9046bd44498fb603ffa7dfbd2eb827f89ec26ee",
+      "image_size": 19460,
+      "image_sha256": "df18dc70762b4c04f32e7959c336bbca1536d50c50ee8721066cc388e648b42a",
       "decoded_size": 83865600,
-      "decoded_sha256": "2bb9caea1c2b33819a21fe2f0d83ba58ae9b688ffaa70941567174a4f2a61af3",
+      "decoded_sha256": "687aa45a4878fa80487b5776a6fe1dabff0be84b46d9c2735f9620c154caef21",
+      "decoded_hash_method": "hdiutil convert -format UDTO"
+    },
+    {
+      "name": "zerofill.dmg",
+      "recipe": "hdiutil create -srcfolder <HELLO.TXT README.TXT DATA.BIN ZEROS.BIN> -fs exFAT -volname DMGZERO -format UDZO",
+      "format": "UDZO",
+      "partition_scheme": "fdisk",
+      "filesystem": "exFAT",
+      "purpose": "Zero-fill (0x00000000) chunks alongside zlib and ignore. 'create -srcfolder' is the only hdiutil path found that emits zero-fill; every 'convert' recipe uses the codec for zeros and 'ignore' for free space. ZEROS.BIN puts a long zero run inside allocated space.",
+      "encrypted": false,
+      "image_size": 48412,
+      "image_sha256": "f16c9bdabf7ac577e9175abd0056e9d47f810af0215680486848c13af99e5754",
+      "decoded_size": 19848704,
+      "decoded_sha256": "3e76ca3ae7533b33a2edabb8b790a02102a05007d139dd95d75ad93acf8d8436",
       "decoded_hash_method": "hdiutil convert -format UDTO"
     }  ]
 }
