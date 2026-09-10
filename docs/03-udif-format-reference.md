@@ -101,9 +101,18 @@ interest:
 ```
 
 Only a small subset of plist needs supporting: `dict`, `array`, `key`, `string`,
-`data`, `integer`. `System.Xml.Linq` handles the parse; the base64 in `<data>` may
-contain whitespace and newlines, which `Convert.FromBase64String` rejects — strip
-whitespace first.
+`data`, `integer`. The base64 in `<data>` is wrapped across lines and indented with
+tabs, which `Convert.FromBase64String` rejects — strip whitespace first.
+
+**The doctype has to be dealt with before parsing.** hdiutil writes
+`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" …>` at the top of every
+plist, and `DtdProcessing.Prohibit` — which is the setting that makes entity
+expansion fail closed — throws on the declaration itself. Parsing with `Prohibit`
+alone therefore rejects every real image. The reader removes the declaration from
+the *prolog only*, and refuses outright any doctype carrying an internal
+`[ … ]` subset, since that is the half that can define entities. What reaches
+`XmlReader` has no DTD, so any `&entity;` beyond the five built-ins is an
+undefined reference and a parse error.
 
 One `blkx` entry usually exists per partition, plus entries for the protective MBR
 and any free space.
