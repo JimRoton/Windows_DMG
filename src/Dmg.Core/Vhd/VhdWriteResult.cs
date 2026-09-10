@@ -9,11 +9,16 @@ namespace Dmg.Core.Vhd;
 /// describe what it wrote.
 /// </param>
 /// <param name="PayloadBytes">
-/// Bytes of disk image written, footer excluded. Equal to
-/// <c>Footer.DiskSize</c> for a fixed VHD, and smaller for a dynamic one, whose
-/// unallocated blocks occupy no space.
+/// The disk the VHD describes, in bytes, footer excluded: the source rounded up
+/// to a whole sector. The same figure as <c>Footer.DiskSize</c>, and the same for
+/// a fixed and a dynamic write of one image - it is the capacity Windows reports,
+/// not the space the file takes.
 /// </param>
-/// <param name="TotalBytes">The size of the finished file, footer and metadata included.</param>
+/// <param name="TotalBytes">
+/// The size of the finished file, footer and metadata included. For a fixed VHD
+/// that is the payload plus 512 bytes; for a dynamic one it is where the saving
+/// shows, because the blocks that were all zeros are not in it.
+/// </param>
 /// <param name="SourceBytes">
 /// Bytes read from the source stream. Smaller than <paramref name="PayloadBytes"/>
 /// only when the source did not end on a sector boundary and was padded out.

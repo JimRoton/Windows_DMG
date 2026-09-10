@@ -64,7 +64,8 @@ public sealed class VhdFooter
     // Version 1.0 of the file format, packed as major:minor in two 16-bit halves.
     private const uint FileFormatVersion1 = 0x0001_0000u;
 
-    // A fixed disk has no dynamic header, so Data Offset is all ones.
+    // A fixed disk has no dynamic header, so Data Offset is all ones. A dynamic
+    // disk puts the offset of its cxsparse header there instead.
     private const ulong NoDataOffset = 0xFFFF_FFFF_FFFF_FFFFuL;
 
     private const int CookieOffset = 0;
@@ -186,7 +187,86 @@ public sealed class VhdFooter
         Guid uniqueId,
         DateTimeOffset createdUtc,
         string creatorApplication = DefaultCreatorApplication,
+        string creatorHostOs = WindowsHostOs) =>
+        Build(
+            diskSizeInBytes,
+            VhdDiskType.Fixed,
+            NoDataOffset,
+            uniqueId,
+            createdUtc,
+            creatorApplication,
+            creatorHostOs);
+
+    /// <summary>
+    /// Builds the footer for a dynamic VHD of <paramref name="diskSizeInBytes"/>
+    /// bytes, whose dynamic disk header sits at
+    /// <paramref name="dynamicHeaderOffset"/>.
+    /// </summary>
+    /// <param name="diskSizeInBytes">
+    /// The disk's capacity - the size the attached volume appears to be, not the
+    /// size of the file. Must be a positive whole number of 512-byte sectors and no
+    /// larger than <see cref="MaxDiskSize"/>.
+    /// </param>
+    /// <param name="dynamicHeaderOffset">
+    /// The absolute byte offset of the <c>cxsparse</c> header. Always
+    /// <see cref="Length"/> in what this tool writes, because the header follows
+    /// the copy of the footer at the head of the file.
+    /// </param>
+    /// <param name="uniqueId">The disk's identifier.</param>
+    /// <param name="createdUtc">The creation timestamp.</param>
+    /// <param name="creatorApplication">A four-character creator code.</param>
+    /// <param name="creatorHostOs">A four-character host-OS code.</param>
+    /// <remarks>
+    /// The only differences from a fixed footer are the disk type and the data
+    /// offset, and the data offset is the one that matters: a dynamic footer whose
+    /// data offset is the all-ones sentinel points a reader at nothing, and Windows
+    /// refuses the attach.
+    /// </remarks>
+    public static Result<VhdFooter> ForDynamicDisk(
+        long diskSizeInBytes,
+        ulong dynamicHeaderOffset,
+        Guid uniqueId,
+        DateTimeOffset createdUtc,
+        string creatorApplication = DefaultCreatorApplication,
         string creatorHostOs = WindowsHostOs)
+    {
+        if (dynamicHeaderOffset == NoDataOffset)
+        {
+            return Result<VhdFooter>.Failure(DmgError.Internal(
+                "A dynamic VHD's footer must point at its dynamic disk header.",
+                "the all-ones data offset is the fixed-disk sentinel"));
+        }
+
+        if (dynamicHeaderOffset % SectorSize != 0)
+        {
+            return Result<VhdFooter>.Failure(DmgError.Internal(
+                "A dynamic VHD's header must start on a sector boundary.",
+                $"data offset {dynamicHeaderOffset}"));
+        }
+
+        return Build(
+            diskSizeInBytes,
+            VhdDiskType.Dynamic,
+            dynamicHeaderOffset,
+            uniqueId,
+            createdUtc,
+            creatorApplication,
+            creatorHostOs);
+    }
+
+    /// <summary>
+    /// The shared body of <see cref="ForFixedDisk(long, Guid, DateTimeOffset, string, string)"/>
+    /// and <see cref="ForDynamicDisk"/>: every field of a footer is the same for
+    /// both except the disk type and the data offset.
+    /// </summary>
+    private static Result<VhdFooter> Build(
+        long diskSizeInBytes,
+        VhdDiskType diskType,
+        ulong dataOffset,
+        Guid uniqueId,
+        DateTimeOffset createdUtc,
+        string creatorApplication,
+        string creatorHostOs)
     {
         if (diskSizeInBytes <= 0)
         {
@@ -251,8 +331,8 @@ public sealed class VhdFooter
         VhdFooter footer = new(
             diskSizeInBytes,
             VhdGeometry.ForDiskSize(diskSizeInBytes),
-            VhdDiskType.Fixed,
-            NoDataOffset,
+            diskType,
+            dataOffset,
             ReservedFeature,
             FileFormatVersion1,
             Epoch.AddSeconds(secondsSinceEpoch),

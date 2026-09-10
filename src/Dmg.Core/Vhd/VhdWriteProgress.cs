@@ -9,9 +9,12 @@ namespace Dmg.Core.Vhd;
 /// Never negative, never greater than <paramref name="TotalBytes"/>.
 /// </param>
 /// <param name="TotalBytes">
-/// The size the finished file will be: the payload rounded up to a whole number
-/// of 512-byte sectors, plus the 512-byte footer. Known before the first byte is
-/// written, which is what makes a percentage meaningful.
+/// The work the write amounts to, known before the first byte, which is what
+/// makes a percentage meaningful. For a fixed VHD that is the finished file - the
+/// payload rounded up to a whole number of sectors, plus the footer. For a
+/// dynamic one it is the metadata plus every byte of disk <i>considered</i>, so
+/// the bar advances steadily through the empty parts instead of leaping over
+/// them; the file that comes out is smaller than this figure.
 /// </param>
 /// <remarks>
 /// <para>
