@@ -1,3 +1,5 @@
+using Dmg.Core.Containers;
+
 namespace Dmg.Core.Tests.Containers;
 
 /// <summary>
@@ -98,4 +100,28 @@ internal static class RealImageSamples
 
     /// <summary>The property list as text.</summary>
     public static string PlistText() => System.Text.Encoding.UTF8.GetString(PlistUtf8());
+
+    /// <summary>
+    /// The two mish payloads from that image: the one-sector protective MBR region
+    /// (2 chunks) and the 67,646-sector FAT32 region (4 chunks), decoded straight
+    /// out of the property list.
+    /// </summary>
+    public static IReadOnlyList<byte[]> MishPayloads()
+    {
+        Result<PlistValue> plist = PlistReader.Parse(PlistUtf8());
+
+        if (!plist.TryGetValue(out PlistValue? root))
+        {
+            throw new InvalidOperationException($"The embedded plist failed to parse: {plist.Error}");
+        }
+
+        Result<IReadOnlyList<BlkxEntry>> entries = BlkxReader.Extract(root);
+
+        if (!entries.TryGetValue(out IReadOnlyList<BlkxEntry>? blkx))
+        {
+            throw new InvalidOperationException($"The embedded plist has no blkx: {entries.Error}");
+        }
+
+        return [.. blkx.Select(entry => entry.Data.ToArray())];
+    }
 }
