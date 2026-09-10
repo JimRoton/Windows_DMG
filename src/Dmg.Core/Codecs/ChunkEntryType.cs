@@ -51,11 +51,48 @@ public static class ChunkEntryType
     public const uint Terminator = 0xFFFF_FFFF;
 
     /// <summary>
+    /// Every entry type the UDIF format defines, ascending - decodable or not.
+    /// </summary>
+    public static IReadOnlyList<uint> Known { get; } =
+    [
+        ZeroFill,
+        Raw,
+        Ignore,
+        Comment,
+        AppleAdc,
+        Zlib,
+        Bzip2,
+        Lzfse,
+        Lzma,
+        Terminator,
+    ];
+
+    /// <summary>
     /// True when the entry is a structural marker rather than a chunk of data - a
     /// comment or the terminator. These have no payload to decode.
     /// </summary>
     public static bool IsStructural(uint entryType) =>
         entryType is Comment or Terminator;
+
+    /// <summary>
+    /// True when the value is one the format defines, whether or not this build can
+    /// decode it.
+    /// </summary>
+    /// <remarks>
+    /// This is the difference between "your image uses bzip2 and we do not implement
+    /// bzip2" and "byte 0x2A appeared where an entry type should be". The first is a
+    /// gap in this build that a user can work around by converting the image; the
+    /// second is most likely a damaged chunk table. They read very differently to
+    /// somebody trying to get their data back, so <c>dmg info</c> is given the means
+    /// to tell them apart.
+    /// </remarks>
+    public static bool IsRecognised(uint entryType) => entryType switch
+    {
+        ZeroFill or Raw or Ignore or Comment => true,
+        AppleAdc or Zlib or Bzip2 or Lzfse or Lzma => true,
+        Terminator => true,
+        _ => false,
+    };
 
     /// <summary>
     /// A human name for any entry type, invented from the raw value when the type
