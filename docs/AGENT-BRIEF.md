@@ -39,8 +39,9 @@ An agent once hung hdiutil and popped a GUI password dialog on the user's screen
   `perl -e 'alarm shift; exec @ARGV' 120 hdiutil ...`
 - On timeout or failure: kill, record as skipped, **never retry interactively**.
 - **Only detach devices you attached**, tracked by device path, with a `trap`.
-  The user has an iOS Simulator runtime and a personal volume at `/Volumes/Private`
-  mounted. Broad or looping `hdiutil detach` is destructive and forbidden.
+  Never touch a volume you did not create. Broad or looping `hdiutil detach` is
+  destructive and forbidden. Create your own images for testing; never rely on,
+  attach, or detach anything already mounted on the machine.
 - Snapshot `hdiutil info` before; confirm device count restored after.
 - `-stdinpass` on `convert` sets the OUTPUT encryption. To read an encrypted
   source: `attach -stdinpass -nomount -readonly` then `dd` the raw device.
@@ -71,3 +72,10 @@ FINDINGS: real bugs or spec discrepancies found, or "none"
 DECISIONS: max 3 lines later stories must know
 BLOCKERS: none | what
 ```
+
+## Windows-only code
+
+We develop on macOS. `net10.0-windows` projects cross-build here but cannot execute
+Win32 calls. Write the code, unit-test it through the fakes, and say plainly in your
+report what still needs a real Windows box. **Do not block on being unable to run it** —
+the user tests Windows behaviour on their own machine.
