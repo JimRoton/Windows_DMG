@@ -50,6 +50,13 @@ public static class PartitionTableReader
             return GuidPartitionTable.Read(disk, sector1, diskSectors);
         }
 
+        if (ApplePartitionMap.HasDriverDescriptorMap(sector0) || ApplePartitionMap.HasMapEntry(sector1))
+        {
+            // Older images are laid out this way. The driver descriptor map is the
+            // usual marker, but an image can carry the map without it.
+            return ApplePartitionMap.Read(disk, sector0, diskSectors);
+        }
+
         if (MasterBootRecord.HasBootSignature(sector0))
         {
             return MasterBootRecord.Read(sector0, diskSectors);
