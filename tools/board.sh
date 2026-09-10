@@ -58,4 +58,9 @@ for n in "$@"; do
   gh issue edit "$n" -R "$REPO" \
      --remove-label status:todo --remove-label status:in-progress --remove-label status:done \
      --add-label "$LBL" >/dev/null 2>&1
+  # keep issue state in lockstep with the board so the two cannot drift
+  case "$LBL" in
+    status:done) gh issue close "$n" -R "$REPO" >/dev/null 2>&1 ;;
+    *)           gh issue reopen "$n" -R "$REPO" >/dev/null 2>&1 ;;
+  esac
 done
