@@ -1,3 +1,5 @@
+using Dmg.Core;
+
 namespace Dmg.Cli;
 
 /// <summary>
@@ -12,7 +14,10 @@ internal static class Program
     internal static int Main(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        Console.Error.WriteLine("dmg: no verbs are wired up yet.");
-        return 2;
+
+        DmgError error = DmgError.Usage("No verbs are wired up yet.");
+        Console.Error.WriteLine($"dmg: {error}");
+
+        return (int)error.Code;
     }
 }
