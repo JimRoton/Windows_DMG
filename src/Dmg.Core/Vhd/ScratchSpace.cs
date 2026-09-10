@@ -131,6 +131,28 @@ public sealed class ScratchSpace : IDisposable
     }
 
     /// <summary>
+    /// Checks that this scratch space's volume has room for the fixed VHD a
+    /// <paramref name="payloadBytes"/>-byte image would produce.
+    /// </summary>
+    /// <param name="payloadBytes">
+    /// The decoded image's size - <c>DmgBlockStream.Length</c>. The footer and the
+    /// sector padding are added here, so the caller does not have to remember them.
+    /// </param>
+    /// <param name="probe">The volume probe; null for the real one.</param>
+    /// <returns>
+    /// Success when there is room, or when the volume could not be measured;
+    /// <see cref="DmgExitCode.InsufficientSpace"/>, naming what was needed and what
+    /// there was, when there is not.
+    /// </returns>
+    /// <remarks>
+    /// Call this before decoding anything. The whole point of the precheck is that
+    /// a conversion which cannot possibly finish costs a millisecond rather than
+    /// half an hour and a full disk.
+    /// </remarks>
+    public Result EnsureRoomFor(long payloadBytes, IFreeSpaceProbe? probe = null) =>
+        FreeSpaceCheck.Require(VhdPath, VhdWriter.FixedFileSizeFor(payloadBytes), probe);
+
+    /// <summary>
     /// Removes the directory and everything in it, and reports whether it worked.
     /// </summary>
     /// <remarks>

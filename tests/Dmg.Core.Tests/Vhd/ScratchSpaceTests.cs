@@ -223,6 +223,20 @@ public sealed class ScratchSpaceTests : IDisposable
         Assert.False(ScratchLayout.IsWithin(_root, _root + "-evil"));
     }
 
+    [Fact]
+    public void IsWithinAnswersForAVolumeRootWhichHasNoPathSegmentOfItsOwn()
+    {
+        // A root directory already ends in a separator - "/" or "C:\\" - so the
+        // comparison has to normalise both sides rather than expect a separator at
+        // the candidate's next character. A scratch root of "D:\\" is a plausible
+        // --scratch argument, and refusing to believe anything is inside it would
+        // make the safety check refuse every path it was meant to allow.
+        string volumeRoot = Path.GetPathRoot(Path.GetFullPath(_root))!;
+
+        Assert.True(ScratchLayout.IsWithin(volumeRoot, _root));
+        Assert.False(ScratchLayout.IsWithin(volumeRoot, volumeRoot));
+    }
+
     private ScratchSpace Create(bool keep = false)
     {
         Result<ScratchSpace> created = ScratchSpace.Create(Options(keep));
