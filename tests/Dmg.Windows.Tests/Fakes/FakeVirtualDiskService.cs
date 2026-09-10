@@ -74,6 +74,26 @@ public sealed class FakeVirtualDiskService : IVirtualDiskService
     /// <exception cref="KeyNotFoundException">No such disk was added.</exception>
     public FakeVirtualDisk Disk(string vhdPath) => _disks[vhdPath];
 
+    /// <summary>
+    /// Makes <see cref="Open"/> fail exactly the way the real service would if
+    /// <c>OpenVirtualDisk</c> returned <paramref name="nativeError"/>.
+    /// </summary>
+    /// <remarks>
+    /// Routing the fake's failures through the same mapper the real service uses is
+    /// what keeps the two honest: a test that asserts "ERROR_ACCESS_DENIED means
+    /// exit 7" is asserting about the shipping mapping, not about the fake.
+    /// </remarks>
+    public void FailOpenWithNativeError(uint nativeError, string vhdPath) =>
+        OpenFailure = VirtualDiskErrors.FromNative(nativeError, VirtualDiskOperation.Open, vhdPath);
+
+    /// <summary>Makes <see cref="Attach"/> fail the way the given native error would.</summary>
+    public void FailAttachWithNativeError(uint nativeError, string vhdPath) =>
+        AttachFailure = VirtualDiskErrors.FromNative(nativeError, VirtualDiskOperation.Attach, vhdPath);
+
+    /// <summary>Makes <see cref="Detach"/> fail the way the given native error would.</summary>
+    public void FailDetachWithNativeError(uint nativeError, string vhdPath) =>
+        DetachFailure = VirtualDiskErrors.FromNative(nativeError, VirtualDiskOperation.Detach, vhdPath);
+
     /// <inheritdoc />
     public Result<IVirtualDiskHandle> Open(string vhdPath, VirtualDiskAccessMode mode)
     {
