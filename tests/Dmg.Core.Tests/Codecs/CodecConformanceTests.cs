@@ -25,7 +25,7 @@ namespace Dmg.Core.Tests.Codecs;
 /// this is a live differential test, not a recorded-value regression test. What is
 /// asserted about hashes is only ever a relationship between them: equality with
 /// what hdiutil said, and the grouping described in
-/// <see cref="SixFixturesDecodeToOneSharedStream"/>. See
+/// <see cref="SevenFixturesDecodeToOneSharedStream"/>. See
 /// <see cref="FixtureCorpus"/> for the drift check that keeps a stale manifest from
 /// being believed.
 /// </para>
@@ -43,9 +43,9 @@ public sealed class CodecConformanceTests
     private const string Bzip2Fixture = "bzip2.dmg";
 
     /// <summary>
-    /// The six fixtures hdiutil converts from one shared 12 MiB exFAT source image.
-    /// Their decoded sector streams are identical by construction, whatever the
-    /// codec or the encryption wrapper on the outside - which is what makes the
+    /// The seven fixtures hdiutil converts from one shared 12 MiB exFAT source
+    /// image. Their decoded sector streams are identical by construction, whatever
+    /// the codec or the encryption wrapper on the outside - which is what makes the
     /// grouping assertion below reproducible even though the hash itself is not.
     /// </summary>
     private static readonly string[] SharedSourceFixtures =
@@ -55,6 +55,7 @@ public sealed class CodecConformanceTests
         "exfat-enc128.dmg",
         "exfat-enc256.dmg",
         "exfat-raw.dmg",
+        "exfat-udro.dmg",
         "exfat-zlib.dmg",
     ];
 
@@ -64,20 +65,22 @@ public sealed class CodecConformanceTests
     /// </summary>
     private static readonly uint[] CodecsThisCorpusCarries =
     [
+        ChunkEntryType.ZeroFill,
+        ChunkEntryType.Raw,
         ChunkEntryType.Ignore,
         ChunkEntryType.AppleAdc,
         ChunkEntryType.Zlib,
     ];
 
     /// <summary>
-    /// The decoders no fixture in this corpus can reach, ascending. See the remarks
-    /// on <see cref="EveryDecoderTheCorpusCanReachIsExercised"/> for why.
+    /// The fixture that carries genuine raw (<c>0x00000001</c>) chunks, and the one
+    /// that carries genuine zero-fill (<c>0x00000000</c>) chunks. Named rather than
+    /// discovered so that losing the recipe fails a test instead of silently
+    /// shrinking what this suite proves.
     /// </summary>
-    private static readonly uint[] CodecsNoFixtureProduces =
-    [
-        ChunkEntryType.ZeroFill,
-        ChunkEntryType.Raw,
-    ];
+    private const string RawChunkFixture = "exfat-udro.dmg";
+
+    private const string ZeroFillFixture = "zerofill.dmg";
 
     private readonly ITestOutputHelper _output;
 
@@ -261,13 +264,13 @@ public sealed class CodecConformanceTests
 
     /// <summary>
     /// The one thing about these hashes that is reproducible across regenerations:
-    /// six fixtures come from a single source image, so their decoded sector streams
-    /// are byte-identical to each other - whatever the codec, and whether or not
-    /// they are encrypted. The value changes every time the corpus is rebuilt; the
-    /// grouping does not, which is why the grouping is what gets asserted.
+    /// seven fixtures come from a single source image, so their decoded sector
+    /// streams are byte-identical to each other - whatever the codec, and whether or
+    /// not they are encrypted. The value changes every time the corpus is rebuilt;
+    /// the grouping does not, which is why the grouping is what gets asserted.
     /// </summary>
     [Fact]
-    public void SixFixturesDecodeToOneSharedStream()
+    public void SevenFixturesDecodeToOneSharedStream()
     {
         if (!FixtureCorpus.IsAvailable)
         {
@@ -306,10 +309,11 @@ public sealed class CodecConformanceTests
             + $"across: {string.Join(", ", members)}");
 
         // And the part of that group we can actually read really does come out
-        // identical by three different routes: the flat UDRW image read straight
-        // off disk, the same disk through zlib, and the same disk through ADC.
-        // Same sectors, three codecs, one hash - which is what isolates the codec
-        // from everything else in the pipeline.
+        // identical by four different routes: the flat UDRW image read straight off
+        // disk, the same disk through zlib, the same disk through ADC, and the same
+        // disk through raw UDIF chunks. Same sectors, three codecs plus the flat
+        // control, one hash - which is what isolates the codec from everything else
+        // in the pipeline.
         List<string> ours = [];
 
         foreach (FixtureRecord record in shared[0].Where(record => !record.Encrypted))
@@ -334,7 +338,7 @@ public sealed class CodecConformanceTests
             _output.WriteLine($"  {record.Name}: decoded by us, {record.Format}");
         }
 
-        Assert.Equal(3, ours.Count);
+        Assert.Equal(4, ours.Count);
         Assert.Single(ours.Distinct(StringComparer.OrdinalIgnoreCase));
         Assert.Equal(
             shared[0].First().DecodedSha256,
@@ -350,21 +354,19 @@ public sealed class CodecConformanceTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Two decoders are not covered here, and it is worth knowing why.</b>
-    /// hdiutil never emitted a raw chunk (<c>0x00000001</c>) or a zero-fill chunk
-    /// (<c>0x00000000</c>) anywhere in this corpus: its compressed formats use zlib
-    /// or ADC for everything that holds data and <c>ignore</c> for everything that
-    /// does not, and its "raw" format, UDRW, is not a UDIF container at all - it is
-    /// a flat sector image with no koly trailer, no chunk table and therefore no
-    /// chunks of any type. A UDIF image made of raw chunks needs <c>-format
-    /// UDRO</c>, which the fixture generator does not produce today; adding it is a
-    /// change to <c>tools/make-fixtures.sh</c>, not to this suite.
+    /// This test used to carry an asserted gap: raw and zero-fill were declared
+    /// unreachable, because every <c>convert</c> recipe hands data chunks to a codec
+    /// and marks free space <c>ignore</c>, and because UDRW - the format whose name
+    /// says "raw" - is not a UDIF container at all but a flat sector image with no
+    /// chunk table. S3.9 closed the gap with two recipes rather than one:
+    /// <c>convert -format UDRO</c> for raw chunks, and
+    /// <c>create -srcfolder … -format UDZO</c> for zero-fill, which is the only
+    /// hdiutil path found that emits type <c>0x00000000</c> at all.
     /// </para>
     /// <para>
-    /// So the gap is asserted rather than hidden: the codecs the corpus does carry
-    /// must all be covered, and the uncovered set must be exactly the two above. If
-    /// hdiutil's output changes - or if a future fixture starts producing raw
-    /// chunks - this test says so instead of quietly passing.
+    /// So there is no gap left to assert. Every decoder this build registers must
+    /// now be exercised against a real Apple image, and a decoder that stops being
+    /// covered fails this test instead of being quietly excused by a list.
     /// </para>
     /// </remarks>
     [Fact]
@@ -431,14 +433,102 @@ public sealed class CodecConformanceTests
                 .Order(),
         ];
 
-        foreach (uint entryType in uncovered)
+        Assert.True(
+            uncovered.Length == 0,
+            "Every decoder this build registers is supposed to be covered by a real hdiutil "
+            + "image, and these are not: "
+            + string.Join(", ", uncovered.Select(ChunkEntryType.NameOf))
+            + ". " + FixtureCorpus.Regenerate);
+    }
+
+    /// <summary>
+    /// Raw and zero-fill specifically, against Apple's ground truth - the two
+    /// decoders that had no hdiutil coverage at all before S3.9.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The generic coverage test above proves a chunk of each type was seen. This
+    /// one proves the bytes those decoders produced are the bytes hdiutil produced,
+    /// which is a different and stronger claim: a raw decoder that returned the
+    /// wrong slice of the data fork, or a zero-fill decoder that emitted the right
+    /// number of the wrong sectors, would satisfy coverage and fail here.
+    /// </para>
+    /// <para>
+    /// Neither fixture's hash is pinned. <c>exfat-udro.dmg</c> is compared against
+    /// its own manifest record and, separately, against the six other fixtures cut
+    /// from the same source image; <c>zerofill.dmg</c> is compared against its own
+    /// manifest record. Both records are written by the same generation run that
+    /// wrote the images.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void RawAndZeroFillAreVerifiedAgainstAppleGroundTruth()
+    {
+        if (!FixtureCorpus.IsAvailable)
         {
-            _output.WriteLine(
-                $"NOT COVERED: {ChunkEntryType.NameOf(entryType)} - no fixture hdiutil produces "
-                + "contains a chunk of this type. See the remarks on this test.");
+            _output.WriteLine($"SKIPPED - no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
+            return;
         }
 
-        Assert.Equal(CodecsNoFixtureProduces, uncovered);
+        AssertCarriesAndMatches(RawChunkFixture, ChunkEntryType.Raw);
+        AssertCarriesAndMatches(ZeroFillFixture, ChunkEntryType.ZeroFill);
+    }
+
+    /// <summary>
+    /// Asserts that <paramref name="fixtureName"/> really contains chunks of
+    /// <paramref name="entryType"/>, and that decoding it reproduces hdiutil's
+    /// sector stream exactly.
+    /// </summary>
+    private void AssertCarriesAndMatches(string fixtureName, uint entryType)
+    {
+        string codec = ChunkEntryType.NameOf(entryType);
+        FixtureRecord? record = FixtureCorpus.Find(fixtureName);
+
+        Assert.True(
+            record is not null,
+            $"{fixtureName} is the corpus's only source of {codec} chunks and it is not in "
+            + $"this run's manifest, so the {codec} decoder has no Apple ground truth at all. "
+            + FixtureCorpus.Regenerate);
+
+        Result<IReadOnlyList<uint>> survey = UdifImageDecoder.SurveyEntryTypes(record!.Path);
+
+        if (!survey.TryGetValue(out IReadOnlyList<uint>? entryTypes))
+        {
+            Assert.Fail($"{fixtureName}: could not read the chunk table: {survey.Error}");
+            return;
+        }
+
+        Assert.True(
+            entryTypes.Contains(entryType),
+            $"{fixtureName} was added to carry {codec} chunks and its chunk table has none. "
+            + $"It holds: {string.Join(", ", entryTypes.Distinct().Order().Select(ChunkEntryType.NameOf))}. "
+            + "The hdiutil recipe has changed behaviour; see the notes in tools/make-fixtures.sh.");
+
+        Result<DecodedImage> decoded = UdifImageDecoder.Decode(record.Path);
+
+        if (!decoded.TryGetValue(out DecodedImage? image))
+        {
+            Assert.Fail($"{fixtureName}: we could not decode it: {decoded.Error}");
+            return;
+        }
+
+        long sectors = image.SectorsByEntryType.TryGetValue(entryType, out long count) ? count : 0;
+
+        Assert.True(
+            sectors > 0,
+            $"{fixtureName}: the chunk table declares {codec} chunks but decoding it produced "
+            + $"no {codec} sectors, so the decoder was never actually called.");
+
+        AssertGroundTruthLength(record, image);
+
+        Assert.Equal(record.DecodedSha256, image.Sha256, StringComparer.OrdinalIgnoreCase);
+
+        _output.WriteLine(
+            $"{fixtureName}: {sectors:N0} {codec} sector(s) among "
+            + string.Join(", ", image.SectorsByEntryType.OrderBy(pair => pair.Key)
+                .Select(pair => $"{ChunkEntryType.NameOf(pair.Key)}={pair.Value:N0}"))
+            + $"; {ConformanceFormat.Bytes(image.HashedLength)} decoded, and the SHA-256 is "
+            + "hdiutil's.");
     }
 
     /// <summary>

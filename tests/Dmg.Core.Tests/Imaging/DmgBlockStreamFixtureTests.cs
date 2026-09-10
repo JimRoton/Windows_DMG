@@ -32,19 +32,24 @@ public sealed class DmgBlockStreamFixtureTests
     /// <c>exfat-raw.dmg</c> is deliberately absent. <c>hdiutil</c>'s UDRW output is
     /// a flat sector image with no <c>koly</c> trailer at all - its size is exactly
     /// its decoded size - so it is the raw-image probe's business, not this one's.
-    /// The encrypted pair are absent for the same kind of reason: they are an
+    /// <c>exfat-udro.dmg</c> is the one that carries real raw <em>chunks</em>, and
+    /// <c>zerofill.dmg</c> the one that carries zero-fill chunks; both are here so
+    /// the stream is exercised over every codec, not just the compressed ones. The
+    /// encrypted pair are absent for the same kind of reason as UDRW: they are an
     /// <c>encrcdsa</c> container, and the decrypting decorator that unwraps them is
     /// E4's.
     /// </remarks>
     public static TheoryData<string> DecodableFixtures() =>
     [
         "exfat-zlib.dmg",
+        "exfat-udro.dmg",
         "exfat-sparse.dmg",
         "adc.dmg",
         "fat32.dmg",
         "hfsplus.dmg",
         "apfs.dmg",
         "multipart.dmg",
+        "zerofill.dmg",
     ];
 
     [Theory]

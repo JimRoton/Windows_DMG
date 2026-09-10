@@ -18,7 +18,7 @@ whole point: they are the ground truth our reader is measured against.
 The images are not committed. Regenerate them with:
 
 ```sh
-tools/make-fixtures.sh      # writes fixtures/generated/, ~37 MB total
+tools/make-fixtures.sh      # writes fixtures/generated/, ~38 MB total
 tools/make-manifest.sh      # refreshes fixtures/manifest.json
 tools/make-hostile-corpus.py  # writes fixtures/hostile/, ~43 MB total
 ```
@@ -45,8 +45,9 @@ reused for anything real.
 
 | Name | Recipe | Filesystem | Purpose |
 | --- | --- | --- | --- |
-| `exfat-raw.dmg` | `create -size 12m -fs exFAT` → `convert -format UDRW` | exFAT | Raw (uncompressed) chunks; the happy path. |
+| `exfat-raw.dmg` | `create -size 12m -fs exFAT` → `convert -format UDRW` | exFAT | **Not** a UDIF container. See below. |
 | `exfat-zlib.dmg` | …→ `convert -format UDZO` | exFAT | zlib chunks — the main case. |
+| `exfat-udro.dmg` | …→ `convert -format UDRO` | exFAT | Genuine **raw** (`0x00000001`) chunks. |
 | `exfat-sparse.dmg` | `create -size 48m -fs exFAT`, one small file → `convert -format UDZO` | exFAT | Mostly empty, so most chunks are zero-fill / ignore. |
 | `exfat-enc256.dmg` | …→ `convert -format UDRW -encryption AES-256 -stdinpass` | exFAT | `encrcdsa` v2 wrapper, AES-256. |
 | `exfat-enc128.dmg` | …→ `convert -format UDRW -encryption AES-128 -stdinpass` | exFAT | AES-128 key length. |
@@ -56,13 +57,23 @@ reused for anything real.
 | `bzip2.dmg` | …→ `convert -format UDBZ` | exFAT | Negative case — unsupported codec. |
 | `adc.dmg` | …→ `convert -format UDCO` | exFAT | Apple ADC decoder. |
 | `multipart.dmg` | blank `-layout NONE`, `diskutil partitionDisk … MBR ExFAT ExFAT` → `convert -format UDZO` | exFAT ×2 | Partition selection. |
+| `zerofill.dmg` | `create -srcfolder … -fs exFAT -format UDZO` | exFAT | **Zero-fill** (`0x00000000`) chunks. |
 
-"…" means the shared 12 MiB exFAT source image, so the **six** fixtures built
-from it — `exfat-raw`, `exfat-zlib`, `exfat-enc256`, `exfat-enc128`, `bzip2` and
-`adc` — decode to **the same raw sector stream**. That is deliberate: it lets a
-test assert that raw, zlib, ADC, bzip2 and both encrypted variants all produce
-byte-identical output, isolating the codec from everything else. The manifest
-bears this out: all six carry an identical `decoded_sha256`.
+"…" means the shared 12 MiB exFAT source image, so the **seven** fixtures built
+from it — `exfat-raw`, `exfat-zlib`, `exfat-udro`, `exfat-enc256`,
+`exfat-enc128`, `bzip2` and `adc` — decode to **the same raw sector stream**.
+That is deliberate: it lets a test assert that raw, zlib, ADC, bzip2 and both
+encrypted variants all produce byte-identical output, isolating the codec from
+everything else. The manifest bears this out: all seven carry an identical
+`decoded_sha256`.
+
+### `exfat-raw.dmg` is not what its name suggests
+
+It is a flat UDRW image: the sector stream on its own, with **no koly trailer,
+no property list and no chunk table**, so it exercises no chunk codec at all.
+It is kept because a flat image is its own ground truth and the reader has to
+correctly refuse to find a container in it — but the fixture that actually
+carries raw chunks is `exfat-udro.dmg`.
 
 ### Volume contents
 
@@ -76,6 +87,9 @@ Each populated volume holds three known files:
 
 `exfat-sparse.dmg` deliberately holds only `HELLO.TXT`. Both partitions of
 `multipart.dmg` hold `HELLO.TXT` and `README.TXT` but not `DATA.BIN`.
+`zerofill.dmg` holds all three plus `ZEROS.BIN`, 8 MiB of zeros — that file is
+what puts a long run of zeros inside *allocated* space, which is what makes
+`hdiutil` emit zero-fill chunks rather than `ignore`.
 
 ## The manifest
 
@@ -108,13 +122,14 @@ ever disagree, `make-manifest.sh` says so loudly, sets `cross_check.result` to
 `convert` ones (encrypted fixtures have no alternative to attach + `dd`), and
 that discrepancy would need chasing before the corpus could be trusted.
 
-### Six fixtures share one hash
+### Seven fixtures share one hash
 
-`exfat-raw`, `exfat-zlib`, `exfat-enc256`, `exfat-enc128`, `bzip2` and `adc`
-are all converted from the same 12 MiB exFAT source, so all six carry an
-**identical** `decoded_sha256`. That equality is itself a test: raw, zlib, ADC,
-bzip2 and both encrypted variants must all decode to the same sectors, which
-isolates the codec and the encryption wrapper from everything else.
+`exfat-raw`, `exfat-zlib`, `exfat-udro`, `exfat-enc256`, `exfat-enc128`,
+`bzip2` and `adc` are all converted from the same 12 MiB exFAT source, so all
+seven carry an **identical** `decoded_sha256`. That equality is itself a test:
+raw, zlib, ADC, bzip2 and both encrypted variants must all decode to the same
+sectors, which isolates the codec and the encryption wrapper from everything
+else.
 
 ### The manifest is a snapshot, not a golden value
 
@@ -184,9 +199,40 @@ reported as drift instead of silently testing the wrong bytes.
   exactly the two data partitions the fixture is for. If a GPT multi-partition
   case is ever needed, it has to be a separate, larger fixture.
 * **`exfat-raw.dmg`, `exfat-enc128.dmg` and `exfat-enc256.dmg` are ~12 MiB each**
-  because UDRW is uncompressed. The other eight are all under 100 KiB.
+  because UDRW is uncompressed. `exfat-udro.dmg` and `zerofill.dmg` are ~250 KB
+  each, because UDRO stores its chunks uncompressed too; the rest are under
+  100 KiB.
+* **Zero-fill chunks needed a different verb, not a different format.**
+  `hdiutil convert` never emits type `0x00000000`, whatever you give it: it
+  hands every chunk holding data to the codec — even a chunk that is entirely
+  zeros — and marks only filesystem free space as `ignore` (`0x00000002`).
+  Measured on macOS 26.7 (25G227), all of these produced **no** zero-fill:
+
+  | Tried | Got |
+  | --- | --- |
+  | `convert <exFAT image> -format UDZO / UDRO / UDCO` | zlib / raw / ADC, plus `ignore` |
+  | `convert <64 MiB of zeros> -format UDZO` | 64 zlib chunks |
+  | `convert <64 MiB of zeros> -format UDRO` | 1 raw chunk |
+  | `convert <half-zero raw disk> -format UDZO` | 48 zlib chunks |
+  | `convert <.sparseimage> -format UDZO` | zlib + `ignore` |
+  | `convert <.sparsebundle> -format UDZO` | 64 zlib chunks |
+  | `convert … -format UDZO -imagekey zlib-level=0` | 64 **raw** chunks — real, but a side effect of asking zlib for no compression, so too fragile to build a fixture on |
+  | `create -size 32m -type UDIF -fs exFAT` | a flat image with no koly at all |
+
+  `hdiutil create -srcfolder` takes a different path — it lays a fresh volume
+  down and knows which of the sectors it wrote are zeros — and that one does
+  emit zero-fill. Hence `zerofill.dmg`.
+* **`create -srcfolder -format UDRO` would have been better and is unusable.**
+  It yields zero-fill *and* raw *and* `ignore` in one image, but on macOS 26.7
+  (25G227) the image it writes is one `hdiutil` itself will not read back:
+  `hdiutil verify`, `hdiutil convert` and even `hdiutil attach -noverify` all
+  answer `corrupt image`. With no way to ask Apple what the image decodes to
+  there is no ground truth, which is the entire point of a fixture — so
+  `zerofill.dmg` is UDZO and `exfat-udro.dmg` supplies the raw chunks
+  separately. (Our own reader parses the UDRO one without complaint, which is
+  not a comforting fact about either implementation.)
 * No fixture was skipped on the machine this corpus was last generated on
-  (macOS 26.7, build 25G227) — all 11 were produced. If a recipe ever stops
+  (macOS 26.7, build 25G227) — all 13 were produced. If a recipe ever stops
   working, `make-fixtures.sh` records it as a skip with a reason rather than
   fabricating the image, and the fixture is simply absent from `manifest.json`.
 
@@ -208,5 +254,12 @@ These are not style preferences. An earlier attempt at this corpus hung
 4. **Detach only devices this run attached.** Both scripts track them in
    `$ATTACHED` and clean up via a `trap`. The developer may well have unrelated
    images mounted; a broad or looping `hdiutil detach` is destructive.
-5. **Parse `/dev/diskN` with a `/dev/disk` match, not "the first line".**
+5. **`hdiutil create -srcfolder` attaches a volume internally, and that one
+   cannot be tracked.** It is the recipe behind `zerofill.dmg` and there is no
+   substitute for it, so it is allowed — but only as a single `hd()` call, with
+   explicit stdin and a hard timeout, and it does clean up after itself
+   (verified by comparing `hdiutil info` before and after). Do not "improve" it
+   by attaching the volume yourself: `-srcfolder` is the whole reason the
+   zero-fill chunks exist.
+6. **Parse `/dev/diskN` with a `/dev/disk` match, not "the first line".**
    `attach` interleaves `Checksumming …` progress lines with the device table.

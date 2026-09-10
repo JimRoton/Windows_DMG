@@ -197,13 +197,33 @@ fi
 
 REASON_NOBASE="exFAT base image could not be created"
 
-# 1. exfat-raw.dmg — UDRW, raw (uncompressed) chunks
+# 1. exfat-raw.dmg — UDRW. NOT a UDIF container: hdiutil's "read/write" output is
+#    the flat sector image with no koly trailer, no property list and no chunk
+#    table, so despite the name it exercises no chunk codec at all. It is kept
+#    because a flat image is its own ground truth and the reader has to refuse to
+#    find a container in it. exfat-udro.dmg below is the fixture that actually
+#    carries raw chunks.
 if [ $BASE_OK -eq 1 ]; then conv exfat-raw.dmg "$BASE" -format UDRW
 else skip exfat-raw.dmg "$REASON_NOBASE"; fi
 
 # 2. exfat-zlib.dmg — UDZO, the main case
 if [ $BASE_OK -eq 1 ]; then conv exfat-zlib.dmg "$BASE" -format UDZO
 else skip exfat-zlib.dmg "$REASON_NOBASE"; fi
+
+# 2b. exfat-udro.dmg — UDRO, and the only convert recipe that puts genuine raw
+#     (0x00000001) chunks in a UDIF container. UDRO is a read-only UDIF whose
+#     chunks are stored uncompressed, so it is a real koly + plist + blkx image
+#     whose data chunks are all type 1. Because it converts from the same $BASE
+#     as exfat-zlib/adc/bzip2/enc*, it decodes to the same sector stream as they
+#     do, which is what lets the conformance suite compare the raw decoder
+#     against the zlib and ADC decoders on identical bytes.
+#
+#     Also tried, and rejected: `convert -format UDZO -imagekey zlib-level=0`
+#     does emit raw chunks (64 of them on a 64 MiB source), but it produces them
+#     as a side effect of asking zlib for no compression, which is a far more
+#     fragile thing to depend on than a documented format name.
+if [ $BASE_OK -eq 1 ]; then conv exfat-udro.dmg "$BASE" -format UDRO
+else skip exfat-udro.dmg "$REASON_NOBASE"; fi
 
 # 3. exfat-sparse.dmg — a mostly empty exFAT volume, UDZO, so most of the image
 #    is zero-fill / ignore chunks rather than data.
@@ -297,6 +317,65 @@ else
     skip multipart.dmg "hdiutil create -layout NONE failed"
 fi
 
+# 12. zerofill.dmg — the only recipe found that makes hdiutil emit zero-fill
+#     (0x00000000) chunks.
+#
+#     What was tried first, and what it produced (macOS 26.7, build 25G227):
+#
+#       convert <exFAT image>       -format UDZO   ->  zlib + ignore, no zero-fill
+#       convert <exFAT image>       -format UDRO   ->  raw  + ignore, no zero-fill
+#       convert <exFAT image>       -format UDCO   ->  ADC  + ignore, no zero-fill
+#       convert <64 MiB of zeros>   -format UDZO   ->  64 zlib chunks, no zero-fill
+#       convert <64 MiB of zeros>   -format UDRO   ->  1 raw chunk,    no zero-fill
+#       convert <half-zero raw>     -format UDZO   ->  48 zlib chunks, no zero-fill
+#       convert <.sparseimage>      -format UDZO   ->  zlib + ignore, no zero-fill
+#       convert <.sparsebundle>     -format UDZO   ->  64 zlib chunks, no zero-fill
+#       create  -type UDIF -fs exFAT               ->  flat image, no koly at all
+#
+#     `hdiutil convert` never emits zero-fill: it hands every chunk that holds
+#     data to the codec, even a chunk that is entirely zeros, and marks only
+#     filesystem free space as `ignore` (0x00000002). `hdiutil create -srcfolder`
+#     takes a different path — it lays down a fresh volume and knows which of the
+#     sectors it wrote are zeros — and that one does emit zero-fill:
+#
+#       create -srcfolder <dir> -fs exFAT -format UDZO -> zero-fill 9, zlib 3, ignore 2
+#       create -srcfolder <dir> -fs exFAT -format UDRO -> zero-fill 2, raw 4, ignore 2
+#
+#     UDRO looks like the better of the two, because one fixture would then carry
+#     zero-fill AND raw AND ignore. It is not usable: on macOS 26.7 (25G227)
+#     `create -srcfolder -format UDRO` writes an image that hdiutil itself will
+#     not read back — `hdiutil verify`, `hdiutil convert` and even
+#     `hdiutil attach -noverify` all answer "corrupt image" — so there is no
+#     ground truth to measure against, which is the whole point of a fixture.
+#     (Our own reader parses it happily, which says nothing good about either
+#     side.) UDZO from the same source converts and verifies normally, so that is
+#     what is used; exfat-udro.dmg above supplies the raw chunks instead.
+#
+#     ZEROS.BIN is what puts a long run of zeros inside *allocated* space rather
+#     than free space; without it hdiutil has far less to mark.
+#
+#     NOTE ON SAFETY: `create -srcfolder` attaches and detaches a volume
+#     internally, which this script cannot put in $ATTACHED. It is still a single
+#     hd() call, so it has explicit stdin and a hard timeout, and it cleans up
+#     after itself — verified by comparing `hdiutil info` before and after. Do not
+#     "fix" this by attaching the volume ourselves: -srcfolder is the whole reason
+#     the zero-fill chunks exist.
+ZSTAGE="$WORK/zstage"
+rm -rf "$ZSTAGE"
+if mkdir -p "$ZSTAGE" \
+   && cp "$STAGE/HELLO.TXT" "$STAGE/README.TXT" "$STAGE/DATA.BIN" "$ZSTAGE"/ \
+   && dd if=/dev/zero of="$ZSTAGE/ZEROS.BIN" bs=1m count=8 2>/dev/null; then
+    rm -f "$OUT/zerofill.dmg"
+    if hd create -srcfolder "$ZSTAGE" -fs exFAT -volname DMGZERO -format UDZO \
+            -ov "$OUT/zerofill.dmg" >/dev/null 2>&1; then
+        ok zerofill.dmg
+    else
+        skip zerofill.dmg "hdiutil create -srcfolder -fs exFAT -format UDZO failed"
+    fi
+else
+    skip zerofill.dmg "could not stage the zero-run content"
+fi
+
 # =============================================================================
 
 rm -rf "$WORK"
@@ -305,7 +384,7 @@ echo
 echo "================ make-fixtures summary ================"
 NP=$(printf '%s' "$PRODUCED" | grep -c . || true)
 NS=$(printf '%s' "$SKIPPED"  | grep -c . || true)
-echo "produced: $NP/11"
+echo "produced: $NP/13"
 printf '%s' "$PRODUCED" | sed 's/^/  + /'
 if [ "$NS" -gt 0 ]; then
     echo "skipped:  $NS"
