@@ -54,10 +54,12 @@ reused for anything real.
 | `adc.dmg` | …→ `convert -format UDCO` | exFAT | Apple ADC decoder. |
 | `multipart.dmg` | blank `-layout NONE`, `diskutil partitionDisk … MBR ExFAT ExFAT` → `convert -format UDZO` | exFAT ×2 | Partition selection. |
 
-"…" means the shared 12 MiB exFAT source image, so the eight fixtures built from
-it decode to **the same raw sector stream**. That is deliberate: it lets a test
-assert that raw, zlib, ADC, bzip2 and both encrypted variants all produce
-byte-identical output, isolating the codec from everything else.
+"…" means the shared 12 MiB exFAT source image, so the **six** fixtures built
+from it — `exfat-raw`, `exfat-zlib`, `exfat-enc256`, `exfat-enc128`, `bzip2` and
+`adc` — decode to **the same raw sector stream**. That is deliberate: it lets a
+test assert that raw, zlib, ADC, bzip2 and both encrypted variants all produce
+byte-identical output, isolating the codec from everything else. The manifest
+bears this out: all six carry an identical `decoded_sha256`.
 
 ### Volume contents
 
@@ -71,6 +73,62 @@ Each populated volume holds three known files:
 
 `exfat-sparse.dmg` deliberately holds only `HELLO.TXT`. Both partitions of
 `multipart.dmg` hold `HELLO.TXT` and `README.TXT` but not `DATA.BIN`.
+
+## The manifest
+
+`fixtures/manifest.json` is the ground truth the reader is measured against.
+Per fixture it records the name, the `hdiutil` recipe, the container size and
+its SHA-256, whether it is encrypted (and with what passphrase), the expected
+filesystem, and — the point of the whole exercise — the **SHA-256 of the fully
+decoded raw sector stream**: the whole-disk image with every codec and the
+encryption wrapper stripped off.
+
+**Every decoded hash comes from Apple's decoder, never from ours.** A hash
+produced by the code under test would make the test circular and worthless.
+There are two ways to get one, because `hdiutil convert` cannot decrypt a
+source:
+
+| Case | How the hash is obtained |
+| --- | --- |
+| Unencrypted | `hdiutil convert <img> -format UDTO -o <tmp>` → `shasum -a 256 <tmp>.cdr` |
+| Encrypted | `hdiutil attach -stdinpass -nomount -readonly <img>` → `dd if=/dev/rdiskN bs=1m \| shasum -a 256` → detach that exact device |
+
+### The two methods agree
+
+`exfat-zlib.dmg` is deliberately hashed **both** ways on every run, as a
+control, and the result is recorded in the manifest under `hash.cross_check`.
+On the corpus as generated they **agree** — `convert`-to-`.cdr` and
+`attach`-plus-`dd` produce the same byte stream — so the split above is a
+matter of what is possible, not of two different notions of "decoded". If they
+ever disagree, `make-manifest.sh` says so loudly, sets `cross_check.result` to
+`DISAGREE`, and records both values; the unencrypted hashes would then be the
+`convert` ones (encrypted fixtures have no alternative to attach + `dd`), and
+that discrepancy would need chasing before the corpus could be trusted.
+
+### Six fixtures share one hash
+
+`exfat-raw`, `exfat-zlib`, `exfat-enc256`, `exfat-enc128`, `bzip2` and `adc`
+are all converted from the same 12 MiB exFAT source, so all six carry an
+**identical** `decoded_sha256`. That equality is itself a test: raw, zlib, ADC,
+bzip2 and both encrypted variants must all decode to the same sectors, which
+isolates the codec and the encryption wrapper from everything else.
+
+### The manifest is a snapshot, not a golden value
+
+`hdiutil` bakes volume UUIDs and creation timestamps into the images it makes,
+so **re-running `make-fixtures.sh` produces a corpus with different hashes.**
+The manifest describes the corpus currently sitting in `fixtures/generated/` on
+this machine; it is not a universal constant, and a hash from another machine
+will not match. Regenerate the two together:
+
+```sh
+tools/make-fixtures.sh && tools/make-manifest.sh
+```
+
+Each record also carries `image_sha256`, the hash of the `.dmg` container
+itself, so a test can tell "the manifest is stale relative to these fixtures"
+apart from "the reader decoded the image wrongly" — which are otherwise the
+same symptom.
 
 ## Notes and limitations
 
