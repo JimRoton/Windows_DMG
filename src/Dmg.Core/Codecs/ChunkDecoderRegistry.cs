@@ -215,5 +215,9 @@ public sealed class ChunkDecoderRegistry
     /// Every codec this build implements. Stories add to this list; nothing else
     /// decides what <see cref="Default"/> contains.
     /// </summary>
-    private static IEnumerable<IChunkDecoder> CreateBuiltInDecoders() => [];
+    private static IEnumerable<IChunkDecoder> CreateBuiltInDecoders() =>
+    [
+        ZeroChunkDecoder.ZeroFill,
+        ZeroChunkDecoder.Ignore,
+    ];
 }
