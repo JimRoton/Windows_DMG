@@ -174,15 +174,26 @@ to the disk.
 A simple LZ variant used in older images. Three token types, decided by the top
 bits of the first byte:
 
-| First byte | Type | Encoding |
-| --- | --- | --- |
-| `1xxxxxxx` | Literal run | run length = `(b & 0x7F) + 1` bytes follow verbatim |
-| `01xxxxxx` | Long match | length = `((b & 0x3F) >> 2) + 3`, offset = `((b & 0x03) << 8) \| next` + 1 |
-| `00xxxxxx` | Short match | length = `(b >> 2) + 3`, offset = `((b & 0x03) << 8) \| next` + 1 |
+| First byte | Token size | Type | Encoding |
+| --- | --- | --- | --- |
+| `1xxxxxxx` | 1 + n | Literal run | run length = `(b & 0x7F) + 1` bytes follow verbatim (1–128) |
+| `01xxxxxx` | 3 | Long match | length = `(b & 0x3F) + 4` (4–67), offset = `(next1 << 8 \| next2) + 1` (1–65536) |
+| `00xxxxxx` | 2 | Short match | length = `((b >> 2) & 0x0F) + 3` (3–18), offset = `((b & 0x03) << 8 \| next) + 1` (1–1024) |
+
+**The long match is a three-byte token with a full 16-bit offset.** This table
+previously described it as a two-byte token sharing the short match's encoding,
+which would make the two tokens identical and the long one pointless. Verified
+against a UDCO image produced by `hdiutil`: with the two-byte reading every ADC
+chunk in that image fails on a back-reference pointing before the start of the
+chunk; with the encoding above, all of them reproduce the raw image byte for byte.
 
 Matches copy from the already-decoded output, byte at a time (overlapping copies
-are legal and intentional). Roughly 150 lines. Guard the output pointer against the
-declared chunk size on every write.
+are legal and intentional — a run of identical bytes is one literal plus a match at
+offset 1, which reads bytes the copy loop is still writing). Roughly 150 lines.
+Guard the output pointer against the declared chunk size on every write.
+
+A chunk's token stream ends exactly where its sectors do: `hdiutil` consumes its
+input to the last byte, so `Dmg.Core` treats leftover tokens as a corrupt chunk.
 
 ---
 
