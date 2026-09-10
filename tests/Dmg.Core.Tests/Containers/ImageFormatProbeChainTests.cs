@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
 using Dmg.Core.Containers;
+using Dmg.Core.Crypto;
+using Dmg.Core.Tests.Crypto;
 
 namespace Dmg.Core.Tests.Containers;
 
@@ -120,6 +123,124 @@ public sealed class ImageFormatProbeChainTests
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.InternalError, result.Error.Code);
+    }
+
+    // ---------------------------------------------------- passphrase-aware identify
+
+    [Fact]
+    public void ACorrectPassphraseOpensAnEncrcdsaImageEndToEnd()
+    {
+        // exfat-enc256.dmg and exfat-enc128.dmg are made exactly this way -
+        // hdiutil convert -format UDRW -encryption - which wraps a flat sector
+        // stream with no koly trailer at all. A correct passphrase has to reach the
+        // raw probe on the plaintext, not fail because there is no UDIF inside.
+        byte[] plaintext = Payload(4096);
+        SyntheticImage image = SyntheticImage.Create("right-passphrase", plaintext: plaintext);
+
+        using MemoryStream file = image.OpenRead();
+        Result<ImageFormatDetection> result = ImageFormatProbeChain.Default.Identify(
+            file,
+            "right-passphrase"u8);
+
+        Assert.True(result.TryGetValue(out ImageFormatDetection? detection), result.Ok ? "" : result.Error.ToString());
+        Assert.Equal(ImageFormat.Raw, detection.Format);
+        Assert.Equal((ulong)(plaintext.Length / 512), detection.SectorCount);
+    }
+
+    [Fact]
+    public void ACorrectPassphraseOverAGenuineKolyTrailerIsConfirmedAsUdif()
+    {
+        // The authoritative half of S4.7: when the plaintext really is UDIF-shaped -
+        // the general, documented case, just not the one tools/make-fixtures.sh
+        // happens to use - the koly trailer is what confirms the passphrase was
+        // right, by the same check KolyTrailer.Read always makes.
+        byte[] plaintext = UdifFile(4096, koly => koly.SectorCount = 8);
+        SyntheticImage image = SyntheticImage.Create("right-passphrase", plaintext: plaintext);
+
+        using MemoryStream file = image.OpenRead();
+        Result<ImageFormatDetection> result = ImageFormatProbeChain.Default.Identify(
+            file,
+            "right-passphrase"u8);
+
+        Assert.True(result.TryGetValue(out ImageFormatDetection? detection), result.Ok ? "" : result.Error.ToString());
+        Assert.Equal(ImageFormat.Udif, detection.Format);
+        Assert.Equal(8UL, detection.SectorCount);
+    }
+
+    [Fact]
+    public void AWrongPassphraseOverTheSameKolyShapedPlaintextIsStillDecryptionFailed()
+    {
+        // Same plaintext as the test above, wrong passphrase: the fast padding
+        // check inside the key unwrap has to refuse this before the koly trailer is
+        // ever in play, so it never has the chance to be misread as corruption.
+        byte[] plaintext = UdifFile(4096, koly => koly.SectorCount = 8);
+        SyntheticImage image = SyntheticImage.Create("right-passphrase", plaintext: plaintext);
+
+        using MemoryStream file = image.OpenRead();
+        Result<ImageFormatDetection> result = ImageFormatProbeChain.Default.Identify(
+            file,
+            "wrong-passphrase"u8);
+
+        Assert.False(result.Ok);
+        Assert.Equal(DmgExitCode.DecryptionFailed, result.Error.Code);
+    }
+
+    [Fact]
+    public void AWrongPassphraseIsDecryptionFailedNeverCorruptImage()
+    {
+        // The fast check - PKCS#7 padding on the unwrapped key blob - catches almost
+        // every wrong passphrase before a single payload block is ever touched. This
+        // is the exit code a caller is meant to branch on; it must never surface as
+        // 9, which would send them looking for a bad download instead of a typo.
+        SyntheticImage image = SyntheticImage.Create("right-passphrase", plaintext: Payload(4096));
+
+        using MemoryStream file = image.OpenRead();
+        Result<ImageFormatDetection> result = ImageFormatProbeChain.Default.Identify(
+            file,
+            "wrong-passphrase"u8);
+
+        Assert.False(result.Ok);
+        Assert.Equal(DmgExitCode.DecryptionFailed, result.Error.Code);
+    }
+
+    [Fact]
+    public void APassphraseIsIgnoredForAnOrdinaryUdifFile()
+    {
+        // The overload has to be safe to call unconditionally - a caller should not
+        // need to know a file is encrypted before offering it a passphrase.
+        byte[] file = UdifFile(4096, koly => koly.SectorCount = 8);
+
+        using MemoryStream stream = new(file, writable: false);
+        Result<ImageFormatDetection> result = ImageFormatProbeChain.Default.Identify(
+            stream,
+            "this is never looked at"u8);
+
+        Assert.True(result.TryGetValue(out ImageFormatDetection? detection), result.Ok ? "" : result.Error.ToString());
+        Assert.Equal(ImageFormat.Udif, detection.Format);
+    }
+
+    [Fact]
+    public void APassphraseCannotOpenTheLegacyVersionOneLayout()
+    {
+        // No passphrase reaches a v1 header at all - IsEncrcdsaV2 says no before any
+        // key material is touched - so the refusal is exactly the unencrypted one.
+        byte[] file = new byte[2048];
+        Ascii("cdsaencr").CopyTo(file, 2048 - 256);
+
+        using MemoryStream stream = new(file, writable: false);
+        Result<ImageFormatDetection> result = ImageFormatProbeChain.Default.Identify(
+            stream,
+            "irrelevant"u8);
+
+        Assert.False(result.Ok);
+        Assert.Equal(DmgExitCode.DecryptionFailed, result.Error.Code);
+    }
+
+    private static byte[] Payload(int length)
+    {
+        byte[] payload = new byte[length];
+        RandomNumberGenerator.Fill(payload);
+        return payload;
     }
 
     // --------------------------------------------------------------------- UDIF

@@ -1,3 +1,5 @@
+using Dmg.Core.Crypto;
+
 namespace Dmg.Core.Containers;
 
 /// <summary>
@@ -201,5 +203,104 @@ public sealed class ImageFormatProbeChain
         return Result<ImageFormatDetection>.Failure(DmgError.Internal(
             "No probe claimed the image, which should be impossible.",
             $"Chain: {string.Join(" -> ", _probes.Select(probe => probe.Name))}."));
+    }
+
+    /// <summary>
+    /// Identifies the image in <paramref name="stream"/>, decrypting it first if it
+    /// turns out to be an <c>encrcdsa</c> v2 image and <paramref name="passphrase"/>
+    /// unlocks it.
+    /// </summary>
+    /// <param name="stream">A readable, seekable stream over the whole file.</param>
+    /// <param name="passphrase">
+    /// A passphrase to try if the file turns out to need one. Ignored - not even
+    /// looked at - for every other format, including the legacy v1 layout, which no
+    /// passphrase can open.
+    /// </param>
+    /// <param name="sourcePath">Where the stream came from, when the caller knows.</param>
+    /// <remarks>
+    /// <para>
+    /// This is E4's answer to "open this end to end": <see cref="EncryptedImageProbe"/>
+    /// only ever recognises and refuses, by design, because a probe does no I/O
+    /// beyond the bounded windows in <see cref="ImageProbeContext"/> and unwrapping a
+    /// key blob is real work with a real passphrase behind it. This method does that
+    /// work and then hands the plaintext back into <em>this same chain</em>, so
+    /// whatever the decrypted bytes turn out to be - a UDIF container, a bare sector
+    /// stream, or neither - is identified by the same probes and the same rules an
+    /// unencrypted file gets, no second code path required.
+    /// </para>
+    /// <para>
+    /// <b>The koly trailer is the authoritative confirmation, when there is one to
+    /// find.</b> A wrong passphrase is caught almost every time by the PKCS#7 padding
+    /// check inside the key unwrap (<see cref="EncryptedDmgKeys"/>), which is a
+    /// 1-in-255 gamble against garbage; the residual case reaches here as plaintext
+    /// that decrypted "successfully" into noise. Recursing into
+    /// <see cref="UdifImageProbe"/> means that noise is judged by
+    /// <see cref="KolyTrailer"/>'s own signature check, and a bad magic there is
+    /// <see cref="DmgExitCode.UnsupportedFormat"/> by that class's own design, never
+    /// <see cref="DmgExitCode.CorruptImage"/> - so the "exit 4, never exit 9"
+    /// guarantee for a wrong passphrase holds even in that unlikely residual case,
+    /// for every image this build was ever going to treat as UDIF in the first
+    /// place.
+    /// </para>
+    /// <para>
+    /// <b>Not every encrcdsa payload is UDIF-shaped, and that is not a wrong
+    /// passphrase.</b> <c>hdiutil convert -format UDRW -encryption</c> - one real
+    /// recipe, and the one <c>tools/make-fixtures.sh</c> uses - wraps a flat sector
+    /// stream with no koly trailer at all; correctly decrypted, it is claimed by
+    /// <see cref="RawImageProbe"/> exactly as an unencrypted flat image would be.
+    /// There is no signature to check a raw stream against, so - as
+    /// <see cref="RawImageProbe"/>'s own remarks already accept - a wrong passphrase
+    /// that happens to produce whole-sector-length noise cannot be told apart from a
+    /// genuine raw payload by content alone. That residual gap is inherited, not
+    /// introduced here, and it is why the padding check upstream is the check that
+    /// carries the most weight.
+    /// </para>
+    /// </remarks>
+    public Result<ImageFormatDetection> Identify(
+        Stream stream,
+        ReadOnlySpan<byte> passphrase,
+        string? sourcePath = null)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+
+        Result<ImageProbeContext> context = ImageProbeContext.Create(stream, sourcePath);
+
+        return context.TryGetValue(out ImageProbeContext? image)
+            ? Identify(image, passphrase)
+            : context.CastFailure<ImageFormatDetection>();
+    }
+
+    /// <summary>
+    /// Runs the passphrase-aware chain over a context that has already been read.
+    /// </summary>
+    /// <param name="image">The windows read from the file.</param>
+    /// <param name="passphrase">A passphrase to try if the file needs one.</param>
+    public Result<ImageFormatDetection> Identify(ImageProbeContext image, ReadOnlySpan<byte> passphrase)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        if (!EncryptedImageProbe.IsEncrcdsaV2(image))
+        {
+            // Not a v2 header - the legacy layout, or nothing encrypted at all - so
+            // there is nothing a passphrase could do here. Fall back to the plain
+            // chain, which refuses the legacy layout by name (S4.8) without ever
+            // being offered a passphrase to try.
+            return Identify(image);
+        }
+
+        Result<EncryptedBlockStream> opened = EncryptedBlockStream.Open(
+            image.Stream,
+            passphrase,
+            leaveOpen: true);
+
+        if (!opened.TryGetValue(out EncryptedBlockStream? plaintext))
+        {
+            return opened.CastFailure<ImageFormatDetection>();
+        }
+
+        using (plaintext)
+        {
+            return Identify(plaintext, image.SourcePath);
+        }
     }
 }

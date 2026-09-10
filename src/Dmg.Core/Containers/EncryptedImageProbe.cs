@@ -15,12 +15,15 @@ namespace Dmg.Core.Containers;
 /// wrong.
 /// </para>
 /// <para>
-/// <b>This probe recognises; it does not decrypt.</b> Unwrapping the key material
-/// is epic E4 and nothing here anticipates it beyond returning
-/// <see cref="DmgExitCode.DecryptionFailed"/>, which is the exit code a caller who
-/// has a passphrase will eventually branch on. Recognition is all that is needed to
-/// make the refusal correct and specific, and it is the whole of what this class
-/// does.
+/// <b>This probe recognises; it does not decrypt.</b> <see cref="Describe"/> always
+/// refuses a v2 <c>encrcdsa</c> file - it has no passphrase to try. Decryption
+/// itself lives in <c>Dmg.Core.Crypto</c>, and the passphrase-aware path is
+/// <see cref="ImageFormatProbeChain.Identify(Stream, ReadOnlySpan{byte}, string?)"/>,
+/// which recognises the same header via <see cref="IsEncrcdsaV2"/>, decrypts, and
+/// re-runs the chain over the plaintext - so a correct passphrase reaches
+/// <see cref="UdifImageProbe"/> or <see cref="RawImageProbe"/> exactly as an
+/// unencrypted file would, and this probe never has to know what came out the
+/// other side.
 /// </para>
 /// </remarks>
 public sealed class EncryptedImageProbe : IImageFormatProbe
@@ -69,6 +72,23 @@ public sealed class EncryptedImageProbe : IImageFormatProbe
             + "This build cannot decrypt images, so there is nothing it can do with it yet; "
             + "open it on a Mac, or use a build with decryption support.",
             $"Encrypted image header {what} in a {image.Length}-byte file.");
+    }
+
+    /// <summary>
+    /// True when <paramref name="image"/> begins with the version-2 <c>encrcdsa</c>
+    /// signature - the only encrypted layout this build can actually decrypt.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so <see cref="ImageFormatProbeChain"/>'s passphrase-aware overload
+    /// knows when trying a passphrase makes sense - a v1 header, or no header at
+    /// all, is never worth the PBKDF2 pass - without duplicating the signature
+    /// check <see cref="Describe"/> already makes.
+    /// </remarks>
+    public static bool IsEncrcdsaV2(ImageProbeContext image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        return IsVersion2(image);
     }
 
     /// <summary>
