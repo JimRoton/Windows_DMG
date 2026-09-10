@@ -1,3 +1,4 @@
+using Dmg.Cli.Commands;
 using Dmg.Core;
 using Dmg.Core.Diagnostics;
 
@@ -7,22 +8,44 @@ namespace Dmg.Cli;
 /// Entry point for <c>dmg.exe</c>.
 /// </summary>
 /// <remarks>
-/// Verb dispatch, argument parsing and the <c>--quiet</c>/<c>--verbose</c>/
-/// <c>--json</c> switches arrive with the CLI stories in epic 9. What exists here
-/// now is the shape everything else will hang off: build an <see cref="IOutput"/>,
-/// do the work, report through it, and return the taxonomy's exit code.
+/// <para>
+/// Deliberately almost empty. Everything worth testing - finding the verb, running
+/// it, turning a failure into an exit code, turning a bug into
+/// <see cref="DmgExitCode.InternalError"/> - lives in
+/// <see cref="CommandDispatcher"/>, which a unit test can call directly. What is
+/// left here is the part a test cannot reach anyway: the real console streams and
+/// the <c>int</c> the operating system wants back.
+/// </para>
+/// <para>
+/// The <c>catch</c> below is the second of two nets. <see cref="CommandDispatcher.Execute"/>
+/// already turns any exception out of a verb into
+/// <see cref="DmgExitCode.InternalError"/>; this one covers the sliver of code
+/// outside it - building the sink, building the registry - so that no path through
+/// this program can put a stack trace on a user's terminal or, worse, exit 0 after
+/// failing.
+/// </para>
 /// </remarks>
 internal static class Program
 {
     internal static int Main(string[] args)
     {
-        ArgumentNullException.ThrowIfNull(args);
-
         IOutput output = ConsoleOutput.ForConsole();
 
-        DmgError error = DmgError.Usage("No verbs are wired up yet.");
-        output.Error(error);
+        try
+        {
+            ArgumentNullException.ThrowIfNull(args);
 
-        return (int)error.Code;
+            CommandDispatcher dispatcher = new(CommandCatalog.CreateRegistry());
+
+            return (int)dispatcher.Execute(args, output);
+        }
+        catch (Exception exception)
+        {
+            output.Error(DmgError.Internal(
+                "dmg hit an internal error and stopped. This is a bug in dmg, not in your image.",
+                $"{exception.GetType().Name}: {exception.Message}"));
+
+            return (int)DmgExitCode.InternalError;
+        }
     }
 }
