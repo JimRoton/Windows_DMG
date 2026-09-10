@@ -58,6 +58,9 @@ public static class FilesystemProbe
         return kind switch
         {
             FilesystemKind.ExFat => ExFatProbe.Probe(volume, head),
+            FilesystemKind.Fat32 or FilesystemKind.Fat16 or FilesystemKind.Fat12 =>
+                FatProbe.Probe(volume, head),
+            FilesystemKind.Ntfs => NtfsProbe.Probe(volume, head),
             FilesystemKind.Unknown => Result<FilesystemInfo>.Success(
                 new FilesystemInfo { Kind = FilesystemKind.Unknown }),
             _ => Result<FilesystemInfo>.Success(new FilesystemInfo { Kind = kind }),
