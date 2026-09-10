@@ -45,8 +45,8 @@ Read order: koly → plist → blkx entries → mish blocks → chunk descriptor
 | `0x020` | 8 | DataForkLength | |
 | `0x028` | 8 | RsrcForkOffset | usually 0 in v4 |
 | `0x030` | 8 | RsrcForkLength | usually 0 in v4 |
-| `0x038` | 4 | SegmentNumber | |
-| `0x03C` | 4 | SegmentCount | |
+| `0x038` | 4 | SegmentNumber | **0**, not 1, on a single-part image — verified |
+| `0x03C` | 4 | SegmentCount | **0**, not 1, on a single-part image — verified |
 | `0x040` | 16 | SegmentID | |
 | `0x050` | 4 | DataChecksumType | |
 | `0x054` | 4 | DataChecksumSize | bits |
@@ -64,6 +64,14 @@ Read order: koly → plist → blkx entries → mish blocks → chunk descriptor
 **Validation before anything else:** signature matches; `HeaderSize == 512`;
 `XMLOffset + XMLLength <= filesize - 512`; `DataForkOffset + DataForkLength <=
 filesize`; `SectorCount * 512` does not overflow.
+
+The `XMLOffset + XMLLength <= filesize - 512` bound must be **inclusive**: in an
+hdiutil-produced image the plist ends exactly where the trailer begins, so a
+strict `<` rejects every real image. Verified against a UDZO fixture.
+
+A file with no `koly` at all is `UnsupportedFormat` (3) — it may simply be some
+other format. A file that says `koly` and then contradicts itself is
+`CorruptImage` (9). An unrecognised `Version` is `UnsupportedFormat`.
 
 ---
 
