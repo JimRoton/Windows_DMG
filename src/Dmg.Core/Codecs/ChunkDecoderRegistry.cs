@@ -21,8 +21,18 @@ namespace Dmg.Core.Codecs;
 /// <para>
 /// <b>Decoding.</b> <see cref="Decode"/> looks up the decoder, bounds the output,
 /// runs it, and checks the result. The bound is here rather than in each codec so
-/// that there is exactly one implementation of the rule that a chunk may not
-/// expand past the sectors it declares.
+/// that there is exactly one implementation of the rule that a chunk may not expand
+/// past the sectors it declares.
+/// </para>
+/// <para>
+/// <b>That bound is the decompression-bomb guard, and it is absolute.</b> A chunk
+/// declaring one sector gets 512 bytes of destination and nothing more, whatever its
+/// payload inflates to; a chunk declaring an implausible number of sectors is
+/// refused by <see cref="DecodedLength"/> before anyone allocates for it. When a
+/// codec's input wants to produce more than the declaration allows, the decode fails
+/// with <see cref="DmgExitCode.CorruptImage"/>. It never stops at the cap and
+/// reports success: a silently truncated chunk is a plausible-looking image that
+/// nobody wrote, which is worse than no image at all.
 /// </para>
 /// <para>
 /// Instances are immutable and safe to share; <see cref="Default"/> is the one
@@ -33,6 +43,26 @@ public sealed class ChunkDecoderRegistry
 {
     /// <summary>The sector size UDIF counts in. Not configurable; the format says 512.</summary>
     public const int BytesPerSector = 512;
+
+    /// <summary>
+    /// The largest a single chunk may claim to decode to: 64 MiB.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A chunk's declared length is attacker-controlled - it is eight bytes read
+    /// straight out of the image - and it decides how much memory a caller allocates
+    /// before a single byte is decoded. A <c>SectorCount</c> of 2^40 is four bytes of
+    /// typing and a terabyte of allocation, so there has to be a number above which
+    /// the image is simply not believed.
+    /// </para>
+    /// <para>
+    /// 64 MiB is that number, with room to spare: <c>hdiutil</c> writes chunks of
+    /// about a megabyte, and the largest seen in a real image while building this was
+    /// 608 KiB. A legitimate image that trips this ceiling would be remarkable, and
+    /// it fails with an explanation rather than an OutOfMemoryException.
+    /// </para>
+    /// </remarks>
+    public const int MaxDecodedChunkBytes = 64 * 1024 * 1024;
 
     private readonly Dictionary<uint, IChunkDecoder> _decoders;
     private readonly uint[] _supportedEntryTypes;
@@ -155,14 +185,13 @@ public sealed class ChunkDecoderRegistry
         Span<byte> destination,
         long sectorCount)
     {
-        if (sectorCount < 0)
-        {
-            return Result<int>.Failure(DmgError.Corrupt(
-                "A chunk declares a negative sector count.",
-                $"SectorCount={sectorCount}."));
-        }
+        // One place, one rule: how many bytes this chunk is allowed to become.
+        Result<int> capacity = DecodedLength(sectorCount);
 
-        long declaredLength = sectorCount * BytesPerSector;
+        if (!capacity.TryGetValue(out int declaredLength))
+        {
+            return capacity;
+        }
 
         if (declaredLength > destination.Length)
         {
@@ -178,7 +207,7 @@ public sealed class ChunkDecoderRegistry
 
         // The decoder never sees more room than the chunk declared, so no codec can
         // write past its own sectors even if its input says it should.
-        Span<byte> bounded = destination[..(int)declaredLength];
+        Span<byte> bounded = destination[..declaredLength];
 
         Result<int> decoded = decoder.Decode(source, bounded);
 
@@ -195,6 +224,53 @@ public sealed class ChunkDecoderRegistry
         }
 
         return Result<int>.Success(written);
+    }
+
+    /// <summary>
+    /// How many bytes a chunk of <paramref name="sectorCount"/> sectors is allowed to
+    /// become - the single definition of the decompression-bomb ceiling.
+    /// </summary>
+    /// <param name="sectorCount">The chunk's declared <c>SectorCount</c>, straight off disk.</param>
+    /// <returns>
+    /// The byte length on success, or <see cref="DmgExitCode.CorruptImage"/> if the
+    /// count is negative, overflows, or exceeds <see cref="MaxDecodedChunkBytes"/>.
+    /// </returns>
+    /// <remarks>
+    /// Callers that allocate a buffer for a chunk should size it from this rather
+    /// than from their own multiplication: the point of the ceiling is that the
+    /// allocation never happens for a chunk that is not going to be decoded.
+    /// </remarks>
+    public static Result<int> DecodedLength(long sectorCount)
+    {
+        if (sectorCount < 0)
+        {
+            return Result<int>.Failure(DmgError.Corrupt(
+                "A chunk declares a negative sector count.",
+                $"SectorCount={sectorCount}."));
+        }
+
+        long length;
+
+        try
+        {
+            length = checked(sectorCount * BytesPerSector);
+        }
+        catch (OverflowException)
+        {
+            return Result<int>.Failure(DmgError.Corrupt(
+                "A chunk declares more sectors than any image could hold.",
+                $"SectorCount={sectorCount} overflows when converted to bytes."));
+        }
+
+        if (length > MaxDecodedChunkBytes)
+        {
+            return Result<int>.Failure(DmgError.Corrupt(
+                $"A chunk declares {length} bytes, past the {MaxDecodedChunkBytes}-byte "
+                + "ceiling on a single chunk.",
+                $"SectorCount={sectorCount}."));
+        }
+
+        return Result<int>.Success((int)length);
     }
 
     /// <summary>
