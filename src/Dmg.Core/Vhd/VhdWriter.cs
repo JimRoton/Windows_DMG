@@ -143,6 +143,106 @@ public static class VhdWriter
     }
 
     /// <summary>
+    /// Writes <paramref name="source"/> to the file at <paramref name="path"/> as a
+    /// fixed VHD, refusing before the first byte if the volume has no room for it.
+    /// </summary>
+    /// <param name="source">The decoded disk. Readable and seekable.</param>
+    /// <param name="path">
+    /// The file to create, overwriting anything already there. In the product this
+    /// is <c>ScratchSpace.VhdPath</c> - a path built from a generated mount id, not
+    /// from anything the image said.
+    /// </param>
+    /// <param name="options">The copy buffer and footer fields; null for the defaults.</param>
+    /// <param name="progress">The progress callback, or null.</param>
+    /// <param name="freeSpaceProbe">The volume probe for the precheck; null for the real one.</param>
+    /// <param name="cancellationToken">Checked once per buffer.</param>
+    /// <returns>
+    /// What was written, or the failure. A volume without room comes back as
+    /// <see cref="DmgExitCode.InsufficientSpace"/> naming both figures, and nothing
+    /// is created at all.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing is left behind on failure.</b> A partly written VHD is worse than
+    /// no VHD: it is a file of the right name that Windows will happily try to
+    /// attach. If any step fails, the file is deleted before the failure is
+    /// returned.
+    /// </para>
+    /// <para>
+    /// The file is preallocated at its final size, so a volume that fills between
+    /// the precheck and the write fails immediately rather than forty minutes in,
+    /// and the result is one extent rather than ten thousand.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled.</exception>
+    public static Result<VhdWriteResult> WriteFixedToFile(
+        Stream source,
+        string path,
+        VhdWriteOptions? options = null,
+        IProgress<VhdWriteProgress>? progress = null,
+        IFreeSpaceProbe? freeSpaceProbe = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        Result<long> measured = MeasureSource(source);
+
+        if (!measured.TryGetValue(out long sourceLength))
+        {
+            return measured.CastFailure<VhdWriteResult>();
+        }
+
+        long fileSize = FixedFileSizeFor(sourceLength);
+
+        Result room = FreeSpaceCheck.Require(path, fileSize, freeSpaceProbe);
+
+        if (!room.Ok)
+        {
+            return room.CastFailure<VhdWriteResult>();
+        }
+
+        Result<VhdWriteResult> written;
+
+        try
+        {
+            using FileStream destination = new(path, new FileStreamOptions
+            {
+                Mode = FileMode.Create,
+                Access = FileAccess.Write,
+                Share = FileShare.None,
+
+                // The writer hands over whole buffers, so a buffer inside the
+                // FileStream would only copy each one a second time.
+                BufferSize = 0,
+                PreallocationSize = fileSize,
+            });
+
+            written = WriteFixed(source, destination, options, progress, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            Delete(path);
+
+            return Result<VhdWriteResult>.Failure(DescribeWriteFailure(exception, bytes: 0));
+        }
+        catch (OperationCanceledException)
+        {
+            Delete(path);
+
+            throw;
+        }
+
+        if (!written.Ok)
+        {
+            Delete(path);
+        }
+
+        return written;
+    }
+
+    /// <summary>
     /// The size the finished fixed VHD will be, for a payload of
     /// <paramref name="payloadBytes"/>: the payload rounded up to a whole sector,
     /// plus the footer.
@@ -174,18 +274,27 @@ public static class VhdWriter
     /// </summary>
     private static Result<long> MeasurePayload(Stream source, Stream destination)
     {
-        if (!source.CanRead || !source.CanSeek)
-        {
-            return Result<long>.Failure(DmgError.Internal(
-                "A VHD is written from a readable, seekable image stream.",
-                $"CanRead={source.CanRead}, CanSeek={source.CanSeek}"));
-        }
-
         if (!destination.CanWrite)
         {
             return Result<long>.Failure(DmgError.Internal(
                 "A VHD must be written to a writable stream.",
                 "the destination stream reports CanWrite=false"));
+        }
+
+        return MeasureSource(source);
+    }
+
+    /// <summary>
+    /// Checks the source and reads its length - the one number the precheck, the
+    /// footer and the progress total are all derived from.
+    /// </summary>
+    private static Result<long> MeasureSource(Stream source)
+    {
+        if (!source.CanRead || !source.CanSeek)
+        {
+            return Result<long>.Failure(DmgError.Internal(
+                "A VHD is written from a readable, seekable image stream.",
+                $"CanRead={source.CanRead}, CanSeek={source.CanSeek}"));
         }
 
         long length;
@@ -417,6 +526,24 @@ public static class VhdWriter
         return OperatingSystem.IsWindows()
             ? code is ErrorDiskFull or ErrorHandleDiskFull
             : code == ENOSPC;
+    }
+
+    /// <summary>
+    /// Removes a VHD that was not finished, so no half-written file is left with a
+    /// name that invites an attach. A failure to delete is not worth reporting over
+    /// the failure that caused it.
+    /// </summary>
+    private static void Delete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Nothing useful to do here: the caller is already returning a failure,
+            // and the scratch directory's own cleanup gets another go at it.
+        }
     }
 
     /// <summary>

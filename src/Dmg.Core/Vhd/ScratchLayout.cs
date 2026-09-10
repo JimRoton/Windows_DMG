@@ -102,19 +102,22 @@ public static class ScratchLayout
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         ArgumentException.ThrowIfNullOrWhiteSpace(candidate);
 
-        string fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        string fullCandidate = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate));
-
-        if (fullCandidate.Length <= fullRoot.Length)
-        {
-            return false;
-        }
+        string fullRoot = WithTrailingSeparator(Path.GetFullPath(root));
+        string fullCandidate = WithTrailingSeparator(Path.GetFullPath(candidate));
 
         StringComparison comparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
-        return fullCandidate.StartsWith(fullRoot, comparison)
-            && fullCandidate[fullRoot.Length] == Path.DirectorySeparatorChar;
+        // Strictly inside: a directory does not contain itself, and a sibling that
+        // merely shares a prefix - "scratch-old" against "scratch" - is not inside
+        // it either, which is why the separator is appended before comparing.
+        return fullCandidate.Length > fullRoot.Length
+            && fullCandidate.StartsWith(fullRoot, comparison);
     }
+
+    private static string WithTrailingSeparator(string path) =>
+        path.EndsWith(Path.DirectorySeparatorChar)
+            ? path
+            : path + Path.DirectorySeparatorChar;
 }
