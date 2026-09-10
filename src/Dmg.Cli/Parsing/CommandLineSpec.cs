@@ -25,10 +25,21 @@ public sealed class CommandLineSpec
     /// <c>dmg info IMAGE</c>. Used for the usage line and for the "too many
     /// arguments" message.
     /// </param>
+    /// <param name="notes">
+    /// Paragraphs printed under the option list by <c>dmg help &lt;verb&gt;</c> -
+    /// the things a user has to be told and an option table cannot say, such as
+    /// which exit code a verb returns when it succeeds at answering an unwelcome
+    /// question.
+    /// </param>
     /// <exception cref="ArgumentException">
-    /// Two options share a long or short name. A wiring bug, so it throws.
+    /// Two options share a long or short name, or a verb tries to claim
+    /// <c>--help</c> or <c>-h</c>. All wiring bugs, so all throw.
     /// </exception>
-    public CommandLineSpec(string verb, IEnumerable<OptionSpec> options, IEnumerable<string>? positionals = null)
+    public CommandLineSpec(
+        string verb,
+        IEnumerable<OptionSpec> options,
+        IEnumerable<string>? positionals = null,
+        IEnumerable<string>? notes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(verb);
         ArgumentNullException.ThrowIfNull(options);
@@ -36,6 +47,7 @@ public sealed class CommandLineSpec
         Verb = verb;
         _options = [.. options];
         Positionals = [.. positionals ?? []];
+        Notes = [.. notes ?? []];
         _byLongName = new Dictionary<string, OptionSpec>(_options.Length, StringComparer.Ordinal);
         _byShortName = [];
 
@@ -56,6 +68,18 @@ public sealed class CommandLineSpec
                     $"'{verb}' gives -{letter} to both --{_byShortName[letter].Name} and --{option.Name}.",
                     nameof(options));
             }
+
+            // --help and -h are answered by the dispatcher before the verb's own
+            // parse ever runs, so a verb that declared either would find it
+            // unreachable - a bug that shows up as an option that silently does
+            // nothing rather than as a build failure. Make it a build failure.
+            if (IsReservedForHelp(option))
+            {
+                throw new ArgumentException(
+                    $"'{verb}' declares {option.Syntax}, but --help and -h are reserved: the dispatcher "
+                    + "answers them for every verb, so this option could never be reached.",
+                    nameof(options));
+            }
         }
     }
 
@@ -67,6 +91,9 @@ public sealed class CommandLineSpec
 
     /// <summary>The names of the positional arguments, in order.</summary>
     public IReadOnlyList<string> Positionals { get; }
+
+    /// <summary>Extra paragraphs for the verb's help, in printing order.</summary>
+    public IReadOnlyList<string> Notes { get; }
 
     /// <summary>The usage line: <c>dmg info [OPTIONS] IMAGE</c>.</summary>
     public string UsageLine
@@ -93,4 +120,7 @@ public sealed class CommandLineSpec
     /// <summary>Finds an option by its single-letter alias.</summary>
     public bool TryGetShort(char letter, [NotNullWhen(true)] out OptionSpec? option) =>
         _byShortName.TryGetValue(letter, out option);
+
+    private static bool IsReservedForHelp(OptionSpec option) =>
+        string.Equals(option.Name, "help", StringComparison.Ordinal) || option.Short == 'h';
 }

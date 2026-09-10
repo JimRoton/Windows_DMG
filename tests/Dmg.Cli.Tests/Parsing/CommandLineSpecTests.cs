@@ -76,4 +76,31 @@ public sealed class CommandLineSpecTests
     {
         Assert.Throws<ArgumentException>(() => new OptionSpec("  ", "description"));
     }
+
+    [Fact]
+    public void AVerbMayNotClaimHelp()
+    {
+        // The dispatcher answers --help and -h before a verb's parse runs, so a
+        // verb that declared either would find it unreachable. Better a build
+        // failure than an option that silently does nothing.
+        Assert.Throws<ArgumentException>(() =>
+            new CommandLineSpec("info", [new OptionSpec("help", "Mine now.")]));
+
+        Assert.Throws<ArgumentException>(() =>
+            new CommandLineSpec("info", [new OptionSpec("hidden", "Mine now.", 'h')]));
+    }
+
+    [Fact]
+    public void NotesAreCarriedThroughForTheHelpToPrint()
+    {
+        CommandLineSpec spec = new("info", [], ["IMAGE"], ["Exits 0 even when it cannot mount."]);
+
+        Assert.Equal(["Exits 0 even when it cannot mount."], spec.Notes);
+    }
+
+    [Fact]
+    public void ASpecWithoutNotesHasNone()
+    {
+        Assert.Empty(new CommandLineSpec("info", []).Notes);
+    }
 }

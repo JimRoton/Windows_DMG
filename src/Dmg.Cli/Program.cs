@@ -24,6 +24,13 @@ namespace Dmg.Cli;
 /// gap.
 /// </para>
 /// <para>
+/// <c>--help</c> is the exception that shapes the sink without being one of those
+/// switches: it overrides <c>--quiet</c> and <c>--json</c>, both of which would
+/// otherwise leave a user who typed <c>--help</c> looking at a blank screen. The
+/// switch itself stays on the line, because which help to print is the
+/// dispatcher's business.
+/// </para>
+/// <para>
 /// The <c>catch</c> below is the second of two nets. <see cref="CommandDispatcher.Execute"/>
 /// already turns any exception out of a verb into
 /// <see cref="DmgExitCode.InternalError"/>; this one covers the sliver of code
@@ -51,7 +58,12 @@ internal static class Program
                 return (int)extracted.Error.Code;
             }
 
-            output = ConsoleOutput.ForConsole(globals.Verbosity, globals.IsJson);
+            // A help request forces a plain human sink: --quiet would suppress the
+            // screen and --json would swallow it, and either way the user typed
+            // --help and would get nothing back.
+            output = globals.WantsHelp
+                ? ConsoleOutput.ForConsole()
+                : ConsoleOutput.ForConsole(globals.Verbosity, globals.IsJson);
 
             CommandDispatcher dispatcher = new(CommandCatalog.CreateRegistry());
 
