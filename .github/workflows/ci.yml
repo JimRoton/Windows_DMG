@@ -1,0 +1,231 @@
+# Continuous integration for Windows_DMG.
+#
+# Four jobs, each earning its place:
+#
+#   core              macOS  - proves Dmg.Core stayed portable
+#   windows           Windows - builds everything, runs the unit suites
+#   e2e               Windows - real AttachVirtualDisk mounts
+#   dependency-guard  Linux  - no third-party packages under src/
+#
+# CI ONLY. Nothing here pushes, tags, releases or deploys - packaging and
+# release automation is S10.2 and lives in its own workflow file.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # The repo targets .NET 10. There is no global.json today; if one is ever
+  # added, swap `dotnet-version` below for `global-json-file: global.json`
+  # so the pin lives in exactly one place.
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # core - the portability gate.
+  #
+  # This job is NOT a duplicate of `windows`. It is the enforcement mechanism
+  # for the rule that Dmg.Core has no Windows dependency: Dmg.Core targets
+  # plain net10.0 and its tests must build and pass on a machine that has no
+  # virtdisk.dll and no Windows API at all. If someone reaches for a Windows
+  # API in Dmg.Core - a net*-windows TFM, a P/Invoke, a reference to
+  # Dmg.Windows - this job goes red. Do not "fix" that by moving the job to
+  # Windows; fix the dependency.
+  # ---------------------------------------------------------------------------
+  core:
+    name: core (macOS - portability gate)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Packages.props', '**/global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # Only the portable projects are touched here on purpose: building the
+      # whole solution would drag in the net10.0-windows projects and dilute
+      # the signal this job exists to produce.
+      - name: Restore
+        run: dotnet restore tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj
+
+      - name: Build
+        run: dotnet build tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj --configuration Release --no-restore
+
+      - name: Test Dmg.Core.Tests
+        run: dotnet test tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj --configuration Release --no-build
+
+  # ---------------------------------------------------------------------------
+  # windows - full solution build plus the unit suites.
+  # ---------------------------------------------------------------------------
+  windows:
+    name: windows (build + unit tests)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Packages.props', '**/global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore Windows_DMG.sln
+
+      - name: Build solution
+        run: dotnet build Windows_DMG.sln --configuration Release --no-restore
+
+      - name: Test Dmg.Core.Tests
+        run: dotnet test tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj --configuration Release --no-build
+
+      - name: Test Dmg.Windows.Tests
+        run: dotnet test tests/Dmg.Windows.Tests/Dmg.Windows.Tests.csproj --configuration Release --no-build
+
+  # ---------------------------------------------------------------------------
+  # e2e - genuine mounts.
+  #
+  # GitHub's windows-latest runners already run as administrator, so
+  # AttachVirtualDisk succeeds and the suite can mount real images. That is the
+  # only reason end-to-end testing is viable without a self-hosted machine.
+  #
+  # The suite is deliberately allowed to be empty (or missing) for now: S10.4
+  # is the story that fills it in. Until then this job must stay green rather
+  # than reporting a false failure, so the test step tolerates "no tests found"
+  # and an absent project directory. Once S10.4 lands, that tolerance can be
+  # deleted - but nothing else in this job needs to change.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: e2e (Windows - real mounts)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Packages.props', '**/global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # E2E drives the built dmg.exe, so the whole solution has to be built.
+      - name: Restore
+        run: dotnet restore Windows_DMG.sln
+
+      - name: Build solution
+        run: dotnet build Windows_DMG.sln --configuration Release --no-restore
+
+      - name: Test Dmg.E2E.Tests
+        shell: bash
+        run: |
+          set -o pipefail
+
+          if ! compgen -G "tests/Dmg.E2E.Tests/*.csproj" > /dev/null; then
+            echo "tests/Dmg.E2E.Tests is not present yet - nothing to run (S10.4 adds the suite)."
+            exit 0
+          fi
+
+          set +e
+          dotnet test tests/Dmg.E2E.Tests/Dmg.E2E.Tests.csproj \
+            --configuration Release --no-build 2>&1 | tee e2e-test.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -ne 0 ] && grep -qiE "no test (is available|matches|source files)" e2e-test.log; then
+            echo "::notice::Dmg.E2E.Tests contains no tests yet - treating as success (S10.4 fills it in)."
+            exit 0
+          fi
+
+          exit "$status"
+
+  # ---------------------------------------------------------------------------
+  # dependency-guard - ADR-002, zero third-party dependencies.
+  #
+  # Nothing under src/ may carry a PackageReference. Test projects under tests/
+  # are exempt: they legitimately reference xunit and the test SDK, none of
+  # which ships in the product binary.
+  # ---------------------------------------------------------------------------
+  dependency-guard:
+    name: dependency-guard (no packages under src/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for PackageReference under src/
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Build files only - a PackageReference in a .cs comment is not a
+          # dependency, and matching one would just be noise.
+          offenders=$(grep -rn --include='*.csproj' \
+                              --include='*.props' \
+                              --include='*.targets' \
+                              -E '<PackageReference[[:space:]>]' src/ || true)
+
+          if [ -n "$offenders" ]; then
+            echo "$offenders"
+            echo
+            cat <<'MESSAGE'
+          ============================================================
+          dependency-guard FAILED
+
+          A PackageReference was found in a project under src/. The lines
+          above show exactly where.
+
+          Windows_DMG ships as a single self-contained NativeAOT binary with
+          zero third-party runtime dependencies. Everything the product needs
+          - the DMG format work, compression, hashing, and the virtdisk.dll
+          P/Invoke layer - is written against the .NET base class library and
+          the Windows API directly. That is a deliberate architectural
+          decision, not an oversight: see
+
+              docs/adr/ADR-002-zero-third-party-dependencies.md
+
+          for the reasoning and the consequences.
+
+          How to resolve this:
+
+            * Implement it against the BCL, or P/Invoke the Windows API from
+              src/Dmg.Windows, instead of taking the package.
+            * If the dependency is genuinely unavoidable, that is an
+              architectural change: amend or supersede ADR-002 first, then
+              relax this guard in the same pull request.
+
+          Test projects under tests/ are exempt - they may reference xunit and
+          the test SDK, since none of that reaches the shipped binary.
+          ============================================================
+          MESSAGE
+            exit 1
+          fi
+
+          echo "No PackageReference found under src/ - ADR-002 holds."
