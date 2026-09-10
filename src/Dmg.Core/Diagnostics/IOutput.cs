@@ -72,12 +72,20 @@ public interface IOutput
     void Error(DmgError error);
 
     /// <summary>
-    /// Writes the one JSON document this invocation produces to stdout.
+    /// Writes the one JSON document this invocation produces to stdout. Valid
+    /// only when <see cref="IsJson"/> is true.
     /// </summary>
     /// <param name="json">A complete, already-serialized JSON document.</param>
     /// <exception cref="InvalidOperationException">
-    /// A JSON document has already been written. There is exactly one per run - a
-    /// second would make stdout unparseable.
+    /// <para>
+    /// <see cref="IsJson"/> is false. Outside JSON mode stdout carries
+    /// human-readable output, so a JSON document written into it would leave
+    /// stdout parseable as neither. Implementations must throw rather than write.
+    /// </para>
+    /// <para>
+    /// Or: a JSON document has already been written. There is exactly one per run
+    /// - a second would make stdout unparseable.
+    /// </para>
     /// </exception>
     void WriteJson(string json);
 }

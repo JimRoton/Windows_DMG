@@ -109,6 +109,20 @@ public sealed class ConsoleOutput : IOutput
     /// <inheritdoc />
     public void WriteJson(string json)
     {
+        // The mode check comes first, and before the null check, because calling
+        // this at all outside JSON mode is the bug - the argument is beside the
+        // point. Without it a caller could interleave a JSON document with the
+        // human-readable lines already on stdout, and stdout would parse as
+        // neither. The invariant IOutput advertises has to be enforced here, in
+        // the only place that can enforce it.
+        if (!IsJson)
+        {
+            throw new InvalidOperationException(
+                "WriteJson was called on a sink that is not in JSON mode (IsJson is false). stdout is carrying "
+                + "human-readable output, so writing a JSON document into it would leave stdout unparseable as "
+                + "either. Construct the sink with isJson: true, or check IOutput.IsJson before calling.");
+        }
+
         ArgumentNullException.ThrowIfNull(json);
 
         if (_jsonWritten)

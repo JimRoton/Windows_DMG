@@ -204,6 +204,80 @@ public sealed class ConsoleOutputTests
         Assert.Equal("""{"first":true}""", sink.Stdout.Trim());
     }
 
+    // ---- WriteJson outside JSON mode -----------------------------------
+
+    /// <summary>
+    /// The mirror image of the invariant above. In JSON mode stdout holds only the
+    /// document; outside JSON mode stdout holds only human-readable output, and a
+    /// JSON document written into it would leave stdout parseable as neither. The
+    /// call is a programming error, so it throws instead of writing.
+    /// </summary>
+    [Theory]
+    [InlineData(Verbosity.Quiet)]
+    [InlineData(Verbosity.Normal)]
+    [InlineData(Verbosity.Verbose)]
+    public void WriteJsonOutsideJsonModeThrowsAndWritesNothing(Verbosity verbosity)
+    {
+        using Sink sink = new(verbosity, isJson: false);
+
+        InvalidOperationException thrown =
+            Assert.Throws<InvalidOperationException>(() => sink.Output.WriteJson("""{"ok":true}"""));
+
+        Assert.Contains("IsJson", thrown.Message, StringComparison.Ordinal);
+        Assert.Empty(sink.Stdout);
+        Assert.Empty(sink.Stderr);
+    }
+
+    /// <summary>
+    /// The real-world shape of the bug: human output already on stdout, then a
+    /// JSON document. The throw has to come before the write, or stdout is
+    /// corrupted whether or not the caller catches it.
+    /// </summary>
+    [Fact]
+    public void WriteJsonDoesNotInterleaveWithHumanOutput()
+    {
+        using Sink sink = new(Verbosity.Normal);
+
+        sink.Output.WriteLine("Mounted installer.dmg -> E:\\");
+
+        Assert.Throws<InvalidOperationException>(() => sink.Output.WriteJson("""{"image":"installer.dmg"}"""));
+
+        Assert.DoesNotContain("{", sink.Stdout, StringComparison.Ordinal);
+        Assert.Equal("Mounted installer.dmg -> E:\\", sink.Stdout.Trim());
+    }
+
+    /// <summary>
+    /// The refusal must not consume the one-document budget: the sink is still
+    /// usable afterwards, and a later legitimate call on a JSON-mode sink is
+    /// unaffected. (A refused call that had set the "already written" flag would
+    /// turn one bug into two.)
+    /// </summary>
+    [Fact]
+    public void ARefusedWriteJsonLeavesTheSinkUsable()
+    {
+        using Sink human = new(Verbosity.Normal);
+
+        Assert.Throws<InvalidOperationException>(() => human.Output.WriteJson("""{"nope":true}"""));
+
+        human.Output.WriteLine("still working");
+        human.Output.Warning("and so is stderr");
+
+        Assert.Equal("still working", human.Stdout.Trim());
+        Assert.Contains("warning: and so is stderr", human.Stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A null document outside JSON mode is still reported as the mode error: the
+    /// argument is beside the point when the call should not have happened at all.
+    /// </summary>
+    [Fact]
+    public void ModeIsCheckedBeforeTheArgument()
+    {
+        using Sink sink = new();
+
+        Assert.Throws<InvalidOperationException>(() => sink.Output.WriteJson(null!));
+    }
+
     [Fact]
     public void JsonModeIsAdvertisedOnTheInterface()
     {
