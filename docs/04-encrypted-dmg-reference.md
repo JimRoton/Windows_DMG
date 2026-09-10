@@ -117,31 +117,63 @@ begins — do not assume a fixed header size.
 
 ## 3. Key unwrap
 
+> **Corrected 2026-09-10.** The wrapping cipher is **AES-192-CBC**, not 3DES. The
+> old text followed the 10.5-era reverse-engineering notes, which record
+> `BlobEncAlgorithm = 17`; current `hdiutil` writes `0x80000001`, Apple's
+> vendor-defined `CSSM_ALGID_AES`. The blob sizes prove it independently — 52
+> bytes of key material padded to 64, and 36 padded to 48. PKCS#7 to a multiple of
+> 8 would have produced 56 and 40. Only a 16-byte block lands on 64 and 48.
+> 3DES-wrapped images from 10.5 still exist, so both ciphers are implemented; the
+> header says which.
+
 ```
  1.  derived = PBKDF2-HMAC-SHA1(passphrase,
                                 salt       = KdfSalt[0 .. KdfSaltLen],
                                 iterations = KdfIterationCount,
                                 outputLen  = BlobEncKeyBits / 8)      // 24 bytes
 
- 2.  keyblob = 3DES-EDE-CBC-decrypt(key = derived,
-                                    iv  = BlobEncIv[0 .. BlobEncIvSize],
-                                    ciphertext = EncryptedKeyblob)
+ 2.  keyblob = AES-192-CBC-decrypt(key = derived,
+                                   iv  = BlobEncIv[0 .. BlobEncIvSize] zero-extended
+                                         to the cipher's block size,
+                                   ciphertext = EncryptedKeyblob)
 
  3.  aesKey  = keyblob[0 .. EncKeyBits/8]                  // 16 or 32 bytes
      hmacKey = keyblob[EncKeyBits/8 .. +20]                // 20 bytes, HMAC-SHA1
 ```
 
+`BlobEncIvSize` is 8 even though the cipher's block is 16. Apple zero-extends it.
+Getting the IV wrong would corrupt only the first plaintext block — which is where
+the AES key lives, so it cannot pass unnoticed.
+
+The unwrapped blob is
+`[aesKey][hmacKey (20)]["CKIE"][0x00]` and then PKCS#7 padding. The four-byte
+marker is present in both fixtures but is not required by this implementation;
+only the padding and the length are checked, so a future `hdiutil` that drops it
+still opens.
+
+**The passphrase may include its terminator.** `hdiutil -stdinpass` keys the image
+off everything it read from standard input, newline included. Every image made by
+a script that pipes `printf '%s\n' "$PASS"` — which is every fixture in this
+repository — therefore has a passphrase one byte longer than the one its author
+typed. The unwrap tries the passphrase as given and then, only if that fails,
+once more with a single `\n` appended. Without that retry those images cannot be
+opened with the passphrase their author believes they set.
+
 .NET equivalents, all in the BCL:
 
 ```csharp
-using var kdf = new Rfc2898DeriveBytes(passphrase, salt, iterations, HashAlgorithmName.SHA1);
-byte[] derived = kdf.GetBytes(24);
+byte[] derived = Rfc2898DeriveBytes.Pbkdf2(
+    passphrase, salt, iterations, HashAlgorithmName.SHA1, 24);
 
-using var des = TripleDES.Create();
-des.Mode = CipherMode.CBC;
-des.Padding = PaddingMode.None;      // handle padding ourselves; see below
-byte[] keyblob = des.CreateDecryptor(derived, blobIv).TransformFinalBlock(blob, 0, blob.Length);
+using var aes = Aes.Create();
+aes.Key = derived;
+byte[] keyblob = aes.DecryptCbc(wrapped, iv, PaddingMode.None);   // padding checked by hand
 ```
+
+The padding is unpadded by hand rather than with `PaddingMode.PKCS7` so the
+failure can come back as exit code 4 with a sentence about the passphrase. Left
+to the BCL it arrives as "padding is invalid and cannot be removed", which is
+true, unhelpful, and the most common thing a user of this tool will ever see.
 
 ---
 
