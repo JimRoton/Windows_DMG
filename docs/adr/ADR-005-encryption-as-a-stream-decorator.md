@@ -58,3 +58,43 @@ wrong. The decorator has exactly one place where ciphertext becomes plaintext.
 - Passphrases live in a `byte[]` inside this class and are zeroed after key
   derivation on every exit path. There is no `--password` command-line option, by
   design — see [the CLI design, §2](../02-cli-design.md#dmg-mount).
+
+---
+
+## Correction — 10 September 2026
+
+The decorator decision below stands and was validated in implementation (S4.1–S4.5).
+Two factual claims in it did **not** survive contact with real images, and are
+corrected here rather than silently edited above.
+
+**1. The wrapping cipher is AES-192-CBC, not 3DES.** This ADR originally treated
+3DES as the key-wrapping algorithm and spent a paragraph on `TripleDES.Create()`
+failing under machine FIPS policy. That was drawn from 10.5-era reverse-engineering
+notes, which record `BlobEncAlgorithm = 17`. Current `hdiutil` writes `0x80000001`
+— Apple's vendor-defined `CSSM_ALGID_AES`. The blob sizes prove it independently:
+52 bytes of key material padded to 64, and 36 padded to 48. PKCS#7 to a multiple
+of 8 would have produced 56 and 40; only a 16-byte block lands on 64 and 48.
+
+3DES-wrapped images from 10.5 do still exist, so both ciphers are implemented and
+the header decides which. **The FIPS concern is therefore a legacy-image-only
+concern, not a main-path one** — it no longer affects images `hdiutil` produces today.
+
+**2. `BlockSize` is 512, not 4096.** The header layout in
+[04-encrypted-dmg-reference.md](../04-encrypted-dmg-reference.md) had every field
+from `0x010` onward shifted four bytes too high, because of a phantom `EncPadding`
+word. Most damagingly that put `EncKeyBits` at the wrong offset, which silently
+mis-sizes the AES key. The key material also does not live in the fixed header at
+all: the header ends with a key count and a key-pointer table, and the KDF
+parameters live in a descriptor that table points at.
+
+**3. A finding neither document anticipated: the passphrase may include its
+terminator.** `hdiutil -stdinpass` keys the image off *everything it read from
+standard input*, newline included. Any image created by a script that pipes
+`printf '%s\n' "$PASS"` — which is every fixture in this repository, and a great
+many real images — has a passphrase one byte longer than the one its author typed.
+The unwrap tries the passphrase as given, then once more with a trailing `\n`.
+Without that retry, those images cannot be opened with the passphrase their author
+believes they set.
+
+All three were found by decoding bytes Apple actually wrote. They are the reason
+both format documents carry a "verify against a real image" warning at the top.
