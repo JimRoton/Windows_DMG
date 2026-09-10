@@ -1,4 +1,5 @@
 using Dmg.Cli.Commands;
+using Dmg.Cli.Parsing;
 using Dmg.Core;
 using Dmg.Core.Diagnostics;
 
@@ -15,6 +16,12 @@ namespace Dmg.Cli;
 /// <see cref="CommandDispatcher"/>, which a unit test can call directly. What is
 /// left here is the part a test cannot reach anyway: the real console streams and
 /// the <c>int</c> the operating system wants back.
+/// </para>
+/// <para>
+/// The global switches are lifted off the line first because they decide how the
+/// output sink is built, and the sink has to exist before anything - including the
+/// failure to parse them - can be reported. A provisional sink covers that one
+/// gap.
 /// </para>
 /// <para>
 /// The <c>catch</c> below is the second of two nets. <see cref="CommandDispatcher.Execute"/>
@@ -35,9 +42,20 @@ internal static class Program
         {
             ArgumentNullException.ThrowIfNull(args);
 
+            Result<GlobalOptions> extracted = GlobalOptions.Extract(args);
+
+            if (!extracted.TryGetValue(out GlobalOptions? globals))
+            {
+                output.Error(extracted.Error);
+
+                return (int)extracted.Error.Code;
+            }
+
+            output = ConsoleOutput.ForConsole(globals.Verbosity, globals.IsJson);
+
             CommandDispatcher dispatcher = new(CommandCatalog.CreateRegistry());
 
-            return (int)dispatcher.Execute(args, output);
+            return (int)dispatcher.Execute(globals.Remaining, output);
         }
         catch (Exception exception)
         {
