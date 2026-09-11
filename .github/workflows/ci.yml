@@ -1,14 +1,17 @@
 # Continuous integration for Windows_DMG.
 #
-# Four jobs, each earning its place:
+# Five jobs, each earning its place:
 #
 #   core              macOS  - proves Dmg.Core stayed portable
 #   windows           Windows - builds everything, runs the unit suites
 #   e2e               Windows - real AttachVirtualDisk mounts
+#   publish           Windows - NativeAOT publish of dmg.exe, win-x64 + win-arm64
 #   dependency-guard  Linux  - no third-party packages under src/
 #
 # CI ONLY. Nothing here pushes, tags, releases or deploys - packaging and
-# release automation is S10.2 and lives in its own workflow file.
+# release automation is S10.2 and lives in its own workflow file. `publish`
+# proves the NativeAOT binaries build and the x64 one runs; it does not
+# publish anything outside this workflow run's own artifacts.
 #
 # ---------------------------------------------------------------------------
 # THE ZERO-TEST GATE (S1.7)
@@ -262,6 +265,97 @@ jobs:
             --configuration Release --no-build
 
           echo "::notice::Dmg.E2E.Tests is not covered by the zero-test gate yet; S10.4 must add it."
+
+  # ---------------------------------------------------------------------------
+  # publish - NativeAOT publish of src/Dmg.Cli (S10.1).
+  #
+  # Proves the win-x64 and win-arm64 NativeAOT publishes actually produce a
+  # working single-file dmg.exe. We cannot cross-compile NativeAOT on macOS
+  # (the analyzers run everywhere, but the native linker step needs a real
+  # Windows toolchain), so this job on windows-latest is the only place that
+  # exercises the publish end to end.
+  #
+  # win-arm64 cannot run on this x64 runner, so only the win-x64 binary is
+  # executed; the arm64 one is proved by the publish succeeding and its size
+  # being printed alongside x64's.
+  #
+  # This is CI validation only - it uploads workflow artifacts for inspection,
+  # it does not attach anything to a release. S10.2's tag-triggered workflow
+  # owns that.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: publish (NativeAOT dmg.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Packages.props', '**/global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Publish win-x64
+        run: >
+          dotnet publish src/Dmg.Cli/Dmg.Cli.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --output artifacts/publish/win-x64
+
+      - name: Publish win-arm64
+        run: >
+          dotnet publish src/Dmg.Cli/Dmg.Cli.csproj
+          --configuration Release
+          --runtime win-arm64
+          --self-contained true
+          --output artifacts/publish/win-arm64
+
+      - name: Run dmg.exe version (win-x64) and print binary sizes
+        shell: pwsh
+        run: |
+          $x64 = "artifacts/publish/win-x64/dmg.exe"
+          $arm64 = "artifacts/publish/win-arm64/dmg.exe"
+
+          if (-not (Test-Path $x64)) {
+            Write-Error "win-x64 publish did not produce $x64"
+            exit 1
+          }
+          if (-not (Test-Path $arm64)) {
+            Write-Error "win-arm64 publish did not produce $arm64"
+            exit 1
+          }
+
+          # win-arm64 cannot execute on this x64 runner - only win-x64 is run.
+          & $x64 version
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            Write-Error "dmg.exe version exited $exitCode, expected 0"
+            exit 1
+          }
+          Write-Host "dmg.exe version (win-x64) exited 0 as expected."
+
+          $x64Size = (Get-Item $x64).Length
+          $arm64Size = (Get-Item $arm64).Length
+          Write-Host ("dmg.exe (win-x64):   {0} bytes" -f $x64Size)
+          Write-Host ("dmg.exe (win-arm64): {0} bytes" -f $arm64Size)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-win-x64
+          path: artifacts/publish/win-x64/dmg.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-win-arm64
+          path: artifacts/publish/win-arm64/dmg.exe
+          if-no-files-found: error
 
   # ---------------------------------------------------------------------------
   # dependency-guard - ADR-002, zero third-party dependencies.
