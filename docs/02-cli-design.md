@@ -351,6 +351,7 @@ with no runtime install and no package references.
 | Need | Choice | License | Shipped? |
 | --- | --- | --- | --- |
 | Unit test framework | xUnit + `xunit.runner.visualstudio` | Apache-2.0 | **No** — `tests/` only |
+| Runtime test skip | Xunit.SkippableFact ([ADR-007](adr/ADR-007-xunit-skippablefact.md)) | MS-PL | **No** — `tests/` only |
 | Test host SDK | `Microsoft.NET.Test.Sdk` | MIT | **No** — `tests/` only |
 
 CI enforces this: a build step (`dependency-guard` in `ci.yml`) fails if any
