@@ -72,7 +72,7 @@ public sealed class AdcChunkDecoder : IChunkDecoder
     public static AdcChunkDecoder Instance { get; } = new();
 
     /// <inheritdoc />
-    public uint EntryType => ChunkEntryType.AppleAdc;
+    public uint EntryType => ChunkEntryTypeCodes.AppleAdc;
 
     /// <inheritdoc />
     public string Name => "ADC";

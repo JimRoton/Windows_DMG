@@ -93,7 +93,7 @@ public sealed class AdcChunkDecoderTests
     [Fact]
     public void ItClaimsEntryType80000004()
     {
-        Assert.Equal(ChunkEntryType.AppleAdc, AdcChunkDecoder.Instance.EntryType);
+        Assert.Equal(ChunkEntryTypeCodes.AppleAdc, AdcChunkDecoder.Instance.EntryType);
         Assert.Equal("ADC", AdcChunkDecoder.Instance.Name);
         Assert.True(AdcChunkDecoder.Instance.ReadsDataFork);
     }
@@ -109,7 +109,7 @@ public sealed class AdcChunkDecoderTests
         Assert.Equal(SectorSize, expected.Length);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.AppleAdc, source, destination, 1);
+            ChunkEntryTypeCodes.AppleAdc, source, destination, 1);
 
         Assert.True(result.Ok, result.Ok ? null : result.Error.ToString());
         Assert.Equal(expected, destination);
@@ -293,6 +293,27 @@ public sealed class AdcChunkDecoderTests
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
     }
 
+    /// <summary>
+    /// The overflow guard's other edge: a match that lands exactly on the last byte
+    /// of the declared length must succeed. This is the case a boundary mutation of
+    /// the guard - <c>&gt;</c> loosened to <c>&gt;=</c>, say - would not be caught
+    /// by: the test above overflows by 57 bytes, so both the real check and an
+    /// off-by-one version of it reject it for the same reason. Only a match sized
+    /// to land exactly at the end distinguishes "fits" from "one byte too many".
+    /// </summary>
+    [Fact]
+    public void AMatchThatExactlyFillsTheRemainingLengthSucceeds()
+    {
+        // 1 literal byte + a 7-byte match reaching back to it = 8, the whole
+        // destination, with nothing left over.
+        byte[] source = [.. Literal(0xAB), .. LongMatch(7, 1)];
+
+        Result<int> result = Decode(source, new byte[8]);
+
+        Assert.True(result.TryGetValue(out int written));
+        Assert.Equal(8, written);
+    }
+
     [Fact]
     public void TokensLeftOverAfterTheSectorsAreFilledAreCorruption()
     {
@@ -391,7 +412,7 @@ public sealed class AdcChunkDecoderTests
         Array.Fill(destination, (byte)0x33);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.AppleAdc, source, destination, 1);
+            ChunkEntryTypeCodes.AppleAdc, source, destination, 1);
 
         Assert.True(result.Ok);
         Assert.All(destination[SectorSize..], b => Assert.Equal(0x33, b));

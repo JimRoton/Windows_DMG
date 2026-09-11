@@ -33,10 +33,10 @@ public sealed class ZeroChunkDecoder : IChunkDecoder
     }
 
     /// <summary>The decoder for zero-fill chunks, <c>0x00000000</c>.</summary>
-    public static ZeroChunkDecoder ZeroFill { get; } = new(ChunkEntryType.ZeroFill, "zero-fill");
+    public static ZeroChunkDecoder ZeroFill { get; } = new(ChunkEntryTypeCodes.ZeroFill, "zero-fill");
 
     /// <summary>The decoder for ignore / free chunks, <c>0x00000002</c>.</summary>
-    public static ZeroChunkDecoder Ignore { get; } = new(ChunkEntryType.Ignore, "ignore");
+    public static ZeroChunkDecoder Ignore { get; } = new(ChunkEntryTypeCodes.Ignore, "ignore");
 
     /// <inheritdoc />
     public uint EntryType { get; }

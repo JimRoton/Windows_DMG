@@ -48,7 +48,14 @@ public sealed class BlkxReaderTests
     [Fact]
     public void WhitespaceIsStrippedBeforeDecoding()
     {
-        Result<byte[]> result = Base64Payload.Decode("  aGVs\n\t bG8=\r\n ", 1024, "payload");
+        // Space, \n, \t and \r are exactly the whitespace Convert.FromBase64String
+        // already tolerates on its own, so a test built only from those passes
+        // whether or not Base64Payload strips anything itself. \f (form feed) and
+        // \v (vertical tab) are whitespace by char.IsWhiteSpace but NOT tolerated
+        // by Convert - it throws FormatException on them - so their presence here
+        // only decodes successfully because Base64Payload's own stripping pass
+        // removed them first.
+        Result<byte[]> result = Base64Payload.Decode("  aGVs\n\t\f bG8=\r\n\v ", 1024, "payload");
 
         Assert.True(result.TryGetValue(out byte[]? bytes));
         Assert.Equal("hello", Encoding.UTF8.GetString(bytes));

@@ -37,7 +37,7 @@ public sealed class DecompressionBombTests
         Assert.True(bomb.Length < 16 * 1024);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, bomb, destination, 1);
+            ChunkEntryTypeCodes.Zlib, bomb, destination, 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -55,7 +55,7 @@ public sealed class DecompressionBombTests
         byte[] destination = new byte[4 * SectorSize];
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, bomb, destination, 1);
+            ChunkEntryTypeCodes.Zlib, bomb, destination, 1);
 
         Assert.False(result.Ok);
         Assert.Equal(0, result.GetValueOrDefault());
@@ -77,7 +77,7 @@ public sealed class DecompressionBombTests
         }
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.AppleAdc, [.. tokens], new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.AppleAdc, [.. tokens], new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -88,7 +88,7 @@ public sealed class DecompressionBombTests
     public void ARawChunkCarryingMoreThanItDeclaredIsRefused()
     {
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Raw, new byte[64 * SectorSize], new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Raw, new byte[64 * SectorSize], new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -112,7 +112,7 @@ public sealed class DecompressionBombTests
         byte[] destination = new byte[16 * SectorSize];
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, output.ToArray(), destination, 1);
+            ChunkEntryTypeCodes.Zlib, output.ToArray(), destination, 1);
 
         Assert.False(result.Ok);
         Assert.All(destination[SectorSize..], b => Assert.Equal(0, b));
@@ -163,10 +163,10 @@ public sealed class DecompressionBombTests
     [InlineData(-1L)]
     public void DecodingWithAnImpossibleSectorCountFailsBeforeTheCodecRuns(long sectors)
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Raw, "raw");
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Raw, "raw");
         ChunkDecoderRegistry registry = new([decoder]);
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, [], new byte[SectorSize], sectors);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], sectors);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -191,7 +191,7 @@ public sealed class DecompressionBombTests
         byte[] destination = new byte[plain.Length];
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, output.ToArray(), destination, sectors);
+            ChunkEntryTypeCodes.Zlib, output.ToArray(), destination, sectors);
 
         Assert.True(result.Ok);
         Assert.Equal(plain, destination);

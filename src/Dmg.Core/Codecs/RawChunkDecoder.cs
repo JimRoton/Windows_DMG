@@ -29,7 +29,7 @@ public sealed class RawChunkDecoder : IChunkDecoder
     public static RawChunkDecoder Instance { get; } = new();
 
     /// <inheritdoc />
-    public uint EntryType => ChunkEntryType.Raw;
+    public uint EntryType => ChunkEntryTypeCodes.Raw;
 
     /// <inheritdoc />
     public string Name => "raw";

@@ -258,10 +258,15 @@ public sealed class DmgBlockStreamTests
     [Fact]
     public void ReadByteWalksTheDiskOneByteAtATime()
     {
+        // Every chunk here spans several sectors, not one: with one-sector chunks
+        // every sector is also a chunk start, so FindOrdinal's binary search always
+        // lands exactly and its `~ordinal - 1` fallback for a mid-chunk position
+        // (see DmgBlockStreamBoundaryTests) never runs. Walking byte-by-byte across
+        // multi-sector chunks forces that branch on the great majority of bytes.
         SyntheticUdifImage image = SyntheticUdif.Build(
-            SyntheticUdif.ChunkSpec.Zlib(1),
-            SyntheticUdif.ChunkSpec.Zero(1),
-            SyntheticUdif.ChunkSpec.Raw(1));
+            SyntheticUdif.ChunkSpec.Zlib(3),
+            SyntheticUdif.ChunkSpec.Zero(2),
+            SyntheticUdif.ChunkSpec.Raw(4));
 
         using DmgBlockStream stream = Open(image);
 

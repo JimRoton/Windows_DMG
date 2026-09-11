@@ -30,7 +30,7 @@ public sealed class ZlibChunkDecoderTests
     [Fact]
     public void ItClaimsEntryType80000005()
     {
-        Assert.Equal(ChunkEntryType.Zlib, ZlibChunkDecoder.Instance.EntryType);
+        Assert.Equal(ChunkEntryTypeCodes.Zlib, ZlibChunkDecoder.Instance.EntryType);
         Assert.Equal("zlib", ZlibChunkDecoder.Instance.Name);
         Assert.True(ZlibChunkDecoder.Instance.ReadsDataFork);
     }
@@ -42,7 +42,7 @@ public sealed class ZlibChunkDecoderTests
         byte[] destination = new byte[plain.Length];
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, Deflate(plain), destination, 4);
+            ChunkEntryTypeCodes.Zlib, Deflate(plain), destination, 4);
 
         Assert.True(result.Ok);
         Assert.Equal(plain.Length, result.Value);
@@ -59,7 +59,7 @@ public sealed class ZlibChunkDecoderTests
         Array.Fill(destination, (byte)0xEE);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, compressed, destination, 64);
+            ChunkEntryTypeCodes.Zlib, compressed, destination, 64);
 
         Assert.True(result.Ok);
         Assert.All(destination, b => Assert.Equal(0, b));
@@ -72,7 +72,7 @@ public sealed class ZlibChunkDecoderTests
         byte[] compressed = Deflate(Pattern(SectorSize - 32));
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, compressed, new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Zlib, compressed, new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -87,7 +87,7 @@ public sealed class ZlibChunkDecoderTests
         byte[] compressed = Deflate(Pattern(2 * SectorSize));
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, compressed, new byte[2 * SectorSize], 1);
+            ChunkEntryTypeCodes.Zlib, compressed, new byte[2 * SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -100,7 +100,7 @@ public sealed class ZlibChunkDecoderTests
         byte[] truncated = compressed[..(compressed.Length / 2)];
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, truncated, new byte[4 * SectorSize], 4);
+            ChunkEntryTypeCodes.Zlib, truncated, new byte[4 * SectorSize], 4);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -113,7 +113,7 @@ public sealed class ZlibChunkDecoderTests
         compressed[compressed.Length / 2] ^= 0xFF;
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, compressed, new byte[8 * SectorSize], 8);
+            ChunkEntryTypeCodes.Zlib, compressed, new byte[8 * SectorSize], 8);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -125,7 +125,7 @@ public sealed class ZlibChunkDecoderTests
         byte[] garbage = [.. Enumerable.Range(0, 512).Select(i => (byte)(i * 37))];
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, garbage, new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Zlib, garbage, new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -142,7 +142,7 @@ public sealed class ZlibChunkDecoderTests
         }
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, output.ToArray(), new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Zlib, output.ToArray(), new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -152,7 +152,7 @@ public sealed class ZlibChunkDecoderTests
     public void AnEmptyPayloadForANonEmptyChunkIsCorruption()
     {
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, [], new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Zlib, [], new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -164,13 +164,13 @@ public sealed class ZlibChunkDecoderTests
         byte[] empty = Deflate([]);
 
         Result<int> ok = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, empty, new byte[SectorSize], 0);
+            ChunkEntryTypeCodes.Zlib, empty, new byte[SectorSize], 0);
 
         Assert.True(ok.Ok);
         Assert.Equal(0, ok.Value);
 
         Result<int> bad = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, Deflate(Pattern(16)), new byte[SectorSize], 0);
+            ChunkEntryTypeCodes.Zlib, Deflate(Pattern(16)), new byte[SectorSize], 0);
 
         Assert.False(bad.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, bad.Error.Code);
@@ -216,7 +216,7 @@ public sealed class ZlibChunkDecoderTests
         Array.Fill(destination, (byte)0x42);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Zlib, Deflate(plain), destination, 1);
+            ChunkEntryTypeCodes.Zlib, Deflate(plain), destination, 1);
 
         Assert.True(result.Ok);
         Assert.Equal(plain, destination[..SectorSize]);

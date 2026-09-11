@@ -14,9 +14,9 @@ public sealed class UnsupportedCodecTests
 
     public static TheoryData<uint, string> UnimplementedCodecs => new()
     {
-        { ChunkEntryType.Bzip2, "bzip2" },
-        { ChunkEntryType.Lzfse, "LZFSE" },
-        { ChunkEntryType.Lzma, "LZMA" },
+        { ChunkEntryTypeCodes.Bzip2, "bzip2" },
+        { ChunkEntryTypeCodes.Lzfse, "LZFSE" },
+        { ChunkEntryTypeCodes.Lzma, "LZMA" },
     };
 
     [Theory]
@@ -103,21 +103,21 @@ public sealed class UnsupportedCodecTests
         // inventory, from the chunk table alone, without a decode being attempted.
         uint[] chunkTable =
         [
-            ChunkEntryType.Bzip2,
-            ChunkEntryType.Bzip2,
-            ChunkEntryType.ZeroFill,
-            ChunkEntryType.Terminator,
+            ChunkEntryTypeCodes.Bzip2,
+            ChunkEntryTypeCodes.Bzip2,
+            ChunkEntryTypeCodes.ZeroFill,
+            ChunkEntryTypeCodes.Terminator,
         ];
 
         IReadOnlyList<ChunkCodecInfo> survey = ChunkDecoderRegistry.Default.Survey(chunkTable);
 
         Assert.Equal(3, survey.Count);
 
-        ChunkCodecInfo bzip2 = survey.Single(info => info.EntryType == ChunkEntryType.Bzip2);
+        ChunkCodecInfo bzip2 = survey.Single(info => info.EntryType == ChunkEntryTypeCodes.Bzip2);
         Assert.True(bzip2.IsUnsupportedPayload);
 
         Assert.Single(survey, info => info.IsUnsupportedPayload);
-        Assert.True(survey.Single(info => info.EntryType == ChunkEntryType.ZeroFill).IsSupported);
+        Assert.True(survey.Single(info => info.EntryType == ChunkEntryTypeCodes.ZeroFill).IsSupported);
     }
 
     [Fact]
@@ -125,10 +125,10 @@ public sealed class UnsupportedCodecTests
     {
         uint[] chunkTable =
         [
-            ChunkEntryType.Zlib,
-            ChunkEntryType.Lzfse,
-            ChunkEntryType.Raw,
-            ChunkEntryType.Lzma,
+            ChunkEntryTypeCodes.Zlib,
+            ChunkEntryTypeCodes.Lzfse,
+            ChunkEntryTypeCodes.Raw,
+            ChunkEntryTypeCodes.Lzma,
         ];
 
         IReadOnlyList<string> missing =
@@ -164,9 +164,9 @@ public sealed class UnsupportedCodecTests
     [Fact]
     public void EveryEntryTypeTheFormatDefinesIsRecognised()
     {
-        Assert.All(ChunkEntryType.Known, type => Assert.True(ChunkEntryType.IsRecognised(type)));
-        Assert.False(ChunkEntryType.IsRecognised(0x8000_0009));
-        Assert.False(ChunkEntryType.IsRecognised(0x0000_0003));
+        Assert.All(ChunkEntryTypeCodes.Known, type => Assert.True(ChunkEntryTypeCodes.IsRecognised(type)));
+        Assert.False(ChunkEntryTypeCodes.IsRecognised(0x8000_0009));
+        Assert.False(ChunkEntryTypeCodes.IsRecognised(0x0000_0003));
     }
 
     [Fact]
@@ -176,10 +176,10 @@ public sealed class UnsupportedCodecTests
         [
             .. ChunkDecoderRegistry.Default.SupportedEntryTypes,
             .. ChunkDecoderRegistry.Default.UnsupportedCodecs.Select(info => info.EntryType),
-            ChunkEntryType.Comment,
-            ChunkEntryType.Terminator,
+            ChunkEntryTypeCodes.Comment,
+            ChunkEntryTypeCodes.Terminator,
         ];
 
-        Assert.Equal([.. ChunkEntryType.Known.Order()], [.. covered.Order()]);
+        Assert.Equal([.. ChunkEntryTypeCodes.Known.Order()], [.. covered.Order()]);
     }
 }

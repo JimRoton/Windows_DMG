@@ -14,13 +14,13 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void ARegisteredDecoderIsReportedAsSupported()
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Zlib, "zlib");
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Zlib, "zlib");
         ChunkDecoderRegistry registry = new([decoder]);
 
-        Assert.True(registry.IsSupported(ChunkEntryType.Zlib));
-        Assert.True(registry.TryGetDecoder(ChunkEntryType.Zlib, out IChunkDecoder? found));
+        Assert.True(registry.IsSupported(ChunkEntryTypeCodes.Zlib));
+        Assert.True(registry.TryGetDecoder(ChunkEntryTypeCodes.Zlib, out IChunkDecoder? found));
         Assert.Same(decoder, found);
-        Assert.Equal([ChunkEntryType.Zlib], registry.SupportedEntryTypes);
+        Assert.Equal([ChunkEntryTypeCodes.Zlib], registry.SupportedEntryTypes);
     }
 
     [Fact]
@@ -28,29 +28,29 @@ public sealed class ChunkDecoderRegistryTests
     {
         ChunkDecoderRegistry registry = new([]);
 
-        Assert.False(registry.IsSupported(ChunkEntryType.Bzip2));
-        Assert.False(registry.TryGetDecoder(ChunkEntryType.Bzip2, out IChunkDecoder? found));
+        Assert.False(registry.IsSupported(ChunkEntryTypeCodes.Bzip2));
+        Assert.False(registry.TryGetDecoder(ChunkEntryTypeCodes.Bzip2, out IChunkDecoder? found));
         Assert.Null(found);
     }
 
     [Fact]
     public void DescribingAnImagesCodecsNeverTouchesADecoder()
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Zlib, "zlib");
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Zlib, "zlib");
         ChunkDecoderRegistry registry = new([decoder]);
 
         IReadOnlyList<ChunkCodecInfo> survey = registry.Survey(
         [
-            ChunkEntryType.Zlib,
-            ChunkEntryType.Bzip2,
-            ChunkEntryType.Zlib,
-            ChunkEntryType.Terminator,
+            ChunkEntryTypeCodes.Zlib,
+            ChunkEntryTypeCodes.Bzip2,
+            ChunkEntryTypeCodes.Zlib,
+            ChunkEntryTypeCodes.Terminator,
         ]);
 
         // Three distinct types, ascending, each described once.
         Assert.Equal(3, survey.Count);
         Assert.Equal(
-            [ChunkEntryType.Zlib, ChunkEntryType.Bzip2, ChunkEntryType.Terminator],
+            [ChunkEntryTypeCodes.Zlib, ChunkEntryTypeCodes.Bzip2, ChunkEntryTypeCodes.Terminator],
             survey.Select(info => info.EntryType));
 
         Assert.True(survey[0].IsSupported);
@@ -89,7 +89,7 @@ public sealed class ChunkDecoderRegistryTests
         ChunkDecoderRegistry registry = new([]);
         byte[] destination = new byte[SectorSize];
 
-        Result<int> result = registry.Decode(ChunkEntryType.Bzip2, [], destination, 1);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Bzip2, [], destination, 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.UnsupportedFormat, result.Error.Code);
@@ -102,7 +102,7 @@ public sealed class ChunkDecoderRegistryTests
         ChunkDecoderRegistry registry = new([]);
         byte[] destination = new byte[SectorSize];
 
-        Result<int> result = registry.Decode(ChunkEntryType.Terminator, [], destination, 1);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Terminator, [], destination, 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -111,11 +111,11 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void TheDecoderOnlyEverSeesTheSectorsTheChunkDeclared()
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Raw, "raw");
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Raw, "raw");
         ChunkDecoderRegistry registry = new([decoder]);
         byte[] destination = new byte[8 * SectorSize];
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, new byte[3], destination, 2);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, new byte[3], destination, 2);
 
         Assert.True(result.Ok);
         Assert.Equal(2 * SectorSize, decoder.LastDestinationLength);
@@ -128,10 +128,10 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void ADecoderThatUnderFillsTheChunkIsCorruption()
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Raw, "raw") { FillCount = 10 };
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Raw, "raw") { FillCount = 10 };
         ChunkDecoderRegistry registry = new([decoder]);
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, [], new byte[SectorSize], 1);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -141,10 +141,10 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void ADecoderThatClaimsMoreThanTheChunkDeclaredIsCorruption()
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Raw, "raw") { ClaimedWritten = SectorSize + 1 };
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Raw, "raw") { ClaimedWritten = SectorSize + 1 };
         ChunkDecoderRegistry registry = new([decoder]);
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, [], new byte[SectorSize], 1);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -153,13 +153,13 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void ADecodersOwnFailureIsPassedStraightBack()
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Raw, "raw")
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Raw, "raw")
         {
             Failure = DmgError.Corrupt("Deliberate."),
         };
         ChunkDecoderRegistry registry = new([decoder]);
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, [], new byte[SectorSize], 1);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal("Deliberate.", result.Error.Message);
@@ -168,9 +168,9 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void ANegativeSectorCountIsCorruptionRatherThanAnException()
     {
-        ChunkDecoderRegistry registry = new([new FakeChunkDecoder(ChunkEntryType.Raw)]);
+        ChunkDecoderRegistry registry = new([new FakeChunkDecoder(ChunkEntryTypeCodes.Raw)]);
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, [], new byte[SectorSize], -1);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], -1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -179,9 +179,9 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void ABufferTooSmallForTheChunkIsOurBugNotTheImages()
     {
-        ChunkDecoderRegistry registry = new([new FakeChunkDecoder(ChunkEntryType.Raw)]);
+        ChunkDecoderRegistry registry = new([new FakeChunkDecoder(ChunkEntryTypeCodes.Raw)]);
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, [], new byte[SectorSize], 2);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], 2);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.InternalError, result.Error.Code);
@@ -190,10 +190,10 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void AZeroSectorChunkDecodesToNothing()
     {
-        FakeChunkDecoder decoder = new(ChunkEntryType.Raw);
+        FakeChunkDecoder decoder = new(ChunkEntryTypeCodes.Raw);
         ChunkDecoderRegistry registry = new([decoder]);
 
-        Result<int> result = registry.Decode(ChunkEntryType.Raw, [], new byte[SectorSize], 0);
+        Result<int> result = registry.Decode(ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], 0);
 
         Assert.True(result.Ok);
         Assert.Equal(0, result.Value);
@@ -206,8 +206,8 @@ public sealed class ChunkDecoderRegistryTests
         ArgumentException error = Assert.Throws<ArgumentException>(() =>
             new ChunkDecoderRegistry(
             [
-                new FakeChunkDecoder(ChunkEntryType.Zlib, "one"),
-                new FakeChunkDecoder(ChunkEntryType.Zlib, "two"),
+                new FakeChunkDecoder(ChunkEntryTypeCodes.Zlib, "one"),
+                new FakeChunkDecoder(ChunkEntryTypeCodes.Zlib, "two"),
             ]));
 
         Assert.Contains("0x80000005", error.Message, StringComparison.Ordinal);
@@ -216,7 +216,7 @@ public sealed class ChunkDecoderRegistryTests
     [Fact]
     public void ADecoderClaimingAStructuralEntryIsAWiringBug() =>
         Assert.Throws<ArgumentException>(() =>
-            new ChunkDecoderRegistry([new FakeChunkDecoder(ChunkEntryType.Terminator)]));
+            new ChunkDecoderRegistry([new FakeChunkDecoder(ChunkEntryTypeCodes.Terminator)]));
 
     [Fact]
     public void TheDefaultRegistryIsShared() =>
@@ -224,36 +224,36 @@ public sealed class ChunkDecoderRegistryTests
 }
 
 /// <summary>The naming table, which has to answer for values nobody has seen.</summary>
-public sealed class ChunkEntryTypeTests
+public sealed class ChunkEntryTypeCodesTests
 {
     [Theory]
-    [InlineData(ChunkEntryType.ZeroFill, "zero-fill")]
-    [InlineData(ChunkEntryType.Raw, "raw")]
-    [InlineData(ChunkEntryType.Ignore, "ignore")]
-    [InlineData(ChunkEntryType.AppleAdc, "ADC")]
-    [InlineData(ChunkEntryType.Zlib, "zlib")]
-    [InlineData(ChunkEntryType.Bzip2, "bzip2")]
-    [InlineData(ChunkEntryType.Lzfse, "LZFSE")]
-    [InlineData(ChunkEntryType.Lzma, "LZMA")]
-    [InlineData(ChunkEntryType.Comment, "comment")]
-    [InlineData(ChunkEntryType.Terminator, "terminator")]
+    [InlineData(ChunkEntryTypeCodes.ZeroFill, "zero-fill")]
+    [InlineData(ChunkEntryTypeCodes.Raw, "raw")]
+    [InlineData(ChunkEntryTypeCodes.Ignore, "ignore")]
+    [InlineData(ChunkEntryTypeCodes.AppleAdc, "ADC")]
+    [InlineData(ChunkEntryTypeCodes.Zlib, "zlib")]
+    [InlineData(ChunkEntryTypeCodes.Bzip2, "bzip2")]
+    [InlineData(ChunkEntryTypeCodes.Lzfse, "LZFSE")]
+    [InlineData(ChunkEntryTypeCodes.Lzma, "LZMA")]
+    [InlineData(ChunkEntryTypeCodes.Comment, "comment")]
+    [InlineData(ChunkEntryTypeCodes.Terminator, "terminator")]
     public void KnownEntryTypesHaveNames(uint entryType, string expected) =>
-        Assert.Equal(expected, ChunkEntryType.NameOf(entryType));
+        Assert.Equal(expected, ChunkEntryTypeCodes.NameOf(entryType));
 
     [Fact]
     public void AnUnknownEntryTypeIsNamedByItsValue() =>
-        Assert.Equal("unknown (0xDEADBEEF)", ChunkEntryType.NameOf(0xDEAD_BEEF));
+        Assert.Equal("unknown (0xDEADBEEF)", ChunkEntryTypeCodes.NameOf(0xDEAD_BEEF));
 
     [Theory]
-    [InlineData(ChunkEntryType.Comment)]
-    [InlineData(ChunkEntryType.Terminator)]
+    [InlineData(ChunkEntryTypeCodes.Comment)]
+    [InlineData(ChunkEntryTypeCodes.Terminator)]
     public void CommentAndTerminatorAreStructural(uint entryType) =>
-        Assert.True(ChunkEntryType.IsStructural(entryType));
+        Assert.True(ChunkEntryTypeCodes.IsStructural(entryType));
 
     [Theory]
-    [InlineData(ChunkEntryType.ZeroFill)]
-    [InlineData(ChunkEntryType.Zlib)]
+    [InlineData(ChunkEntryTypeCodes.ZeroFill)]
+    [InlineData(ChunkEntryTypeCodes.Zlib)]
     [InlineData(0xDEAD_BEEFu)]
     public void EverythingElseIsAPayload(uint entryType) =>
-        Assert.False(ChunkEntryType.IsStructural(entryType));
+        Assert.False(ChunkEntryTypeCodes.IsStructural(entryType));
 }
