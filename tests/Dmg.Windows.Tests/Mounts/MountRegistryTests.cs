@@ -570,6 +570,120 @@ public sealed class MountRegistryTests
     }
 
     [Fact]
+    public void ReconciledReadKeepsAMountWhoseDiskIsStillAttached()
+    {
+        using TemporaryDirectory directory = new();
+        MountRegistry registry = new(directory.Path);
+        FakeVirtualDiskService virtualDiskService = new();
+
+        MountRecord stored = Store(registry, @"C:\images\a.dmg", @"C:\scratch\a.vhd", "E");
+        virtualDiskService.AddDisk(stored.VhdPath).MarkAttached();
+
+        Assert.Equal("E", Assert.Single(registry.Read(virtualDiskService)).DriveLetter);
+    }
+
+    [Fact]
+    public void ReconciledReadDropsAMountWhoseDiskIsNoLongerAttached()
+    {
+        // The reboot case: the registry still says E: is ubuntu.dmg, but Windows
+        // does not remember an attached virtual disk across a restart, so the
+        // fake's disk comes back not attached - same as a real one would.
+        using TemporaryDirectory directory = new();
+        MountRegistry registry = new(directory.Path);
+        FakeVirtualDiskService virtualDiskService = new();
+
+        Store(registry, @"C:\images\a.dmg", @"C:\scratch\a.vhd", "E");
+        virtualDiskService.AddDisk(@"C:\scratch\a.vhd");
+
+        Assert.Empty(registry.Read(virtualDiskService));
+    }
+
+    [Fact]
+    public void ReconciledReadDropsAMountWhoseVhdIsGoneEntirely()
+    {
+        // Nothing was even added to the fake for this path - Open() fails exactly
+        // as it would for a scratch file that got deleted by hand.
+        using TemporaryDirectory directory = new();
+        MountRegistry registry = new(directory.Path);
+        FakeVirtualDiskService virtualDiskService = new();
+
+        Store(registry, @"C:\images\a.dmg", @"C:\scratch\gone.vhd", "E");
+
+        Assert.Empty(registry.Read(virtualDiskService));
+    }
+
+    [Fact]
+    public void ReconciledReadPersistsThePruneSoAPlainReadAgreesAfterwards()
+    {
+        using TemporaryDirectory directory = new();
+        MountRegistry registry = new(directory.Path);
+        FakeVirtualDiskService virtualDiskService = new();
+
+        Store(registry, @"C:\images\ghost.dmg", @"C:\scratch\ghost.vhd", "E");
+        MountRecord live = Store(registry, @"C:\images\live.dmg", @"C:\scratch\live.vhd", "F");
+        virtualDiskService.AddDisk(live.VhdPath).MarkAttached();
+
+        registry.Read(virtualDiskService);
+
+        Assert.Equal("F", Assert.Single(registry.Read()).DriveLetter);
+    }
+
+    [Fact]
+    public void ReconciliationIsSilentByDefaultAndTracesWhenSomethingWasPruned()
+    {
+        using TemporaryDirectory directory = new();
+        RecordingOutput output = new();
+        MountRegistry registry = new(directory.Path, output);
+        FakeVirtualDiskService virtualDiskService = new();
+
+        Store(registry, @"C:\images\a.dmg", @"C:\scratch\a.vhd", "E");
+        virtualDiskService.AddDisk(@"C:\scratch\a.vhd");
+
+        registry.Read(virtualDiskService);
+
+        // Nothing at Warning/Error - a ghost from a reboot is not a problem to
+        // surface by default - but a trace is there for --verbose to show.
+        Assert.Empty(output.Warnings);
+        Assert.Empty(output.Errors);
+        Assert.True(output.TracedAbout("no longer attached"));
+    }
+
+    [Fact]
+    public void ReconciliationSaysNothingAtAllWhenEveryDiskIsStillAttached()
+    {
+        using TemporaryDirectory directory = new();
+        RecordingOutput output = new();
+        MountRegistry registry = new(directory.Path, output);
+        FakeVirtualDiskService virtualDiskService = new();
+
+        MountRecord stored = Store(registry, @"C:\images\a.dmg", @"C:\scratch\a.vhd", "E");
+        virtualDiskService.AddDisk(stored.VhdPath).MarkAttached();
+
+        registry.Read(virtualDiskService);
+
+        Assert.Empty(output.Traces);
+    }
+
+    [Theory]
+    [InlineData(VirtualDiskAccessMode.ReadOnly)]
+    [InlineData(VirtualDiskAccessMode.ReadWrite)]
+    public void ReconciliationOpensReadOnlyRegardlessOfTheRecordedMode(VirtualDiskAccessMode mode)
+    {
+        // A disk that has since become write-protected is still attached; asking
+        // "is it there?" must not fail just because a read-write mount could no
+        // longer be re-opened for writing.
+        using TemporaryDirectory directory = new();
+        MountRegistry registry = new(directory.Path);
+        FakeVirtualDiskService virtualDiskService = new();
+
+        MountRecord stored = Store(registry, @"C:\images\a.dmg", @"C:\scratch\a.vhd", "E", mode);
+        FakeVirtualDisk disk = virtualDiskService.AddDisk(stored.VhdPath).MarkAttached();
+        disk.IsWriteProtected = true;
+
+        Assert.Single(registry.Read(virtualDiskService));
+    }
+
+    [Fact]
     public void TheRegistryForTheCurrentUserSitsInADmgFolderUnderLocalApplicationData()
     {
         // Path arithmetic only - this creates nothing, which is why it is safe to
