@@ -24,14 +24,14 @@ namespace Dmg.Cli.Commands;
 /// <para>
 /// <b>Two outcomes.</b> Every chunk decoded cleanly (<see cref="DmgExitCode.Success"/>),
 /// or one did not, in which case the message names the first chunk that failed - its
-/// ordinal in extent order and its <c>EntryType</c> - and the process exits
-/// <see cref="DmgExitCode.CorruptImage"/>. That is deliberately the only failure
-/// exit code this verb's decode pass produces: a decode failure partway through an
-/// image is exactly what "corrupt" means for this verb, whether the underlying
-/// cause was a checksum-shaped mismatch or a codec this build cannot run. Opening
-/// the image can still fail with any of the usual codes - no such file, wrong
-/// passphrase, a container this build has never parsed - before the decode pass
-/// ever starts.
+/// ordinal in extent order and its <c>EntryType</c>. A codec this build has no
+/// decoder for is reported as <see cref="DmgExitCode.UnsupportedFormat"/> - the
+/// same code <c>info</c> and <c>extract</c> use for it - because it says nothing
+/// about whether the image itself is intact; every other decode failure, a chunk
+/// whose bytes do not decode to what its table entry declares, is genuinely
+/// <see cref="DmgExitCode.CorruptImage"/>. Opening the image can still fail with
+/// any of the usual codes - no such file, wrong passphrase, a container this build
+/// has never parsed - before the decode pass ever starts.
 /// </para>
 /// <para>
 /// <b>A raw image has no chunk table</b> - there is nothing to decode, because the
@@ -82,9 +82,11 @@ public sealed class VerifyCommand : ICliCommand
             "Decodes every chunk of the image, in order - not just the handful info reads. "
             + "That is the only way to catch a chunk near the end of the file whose compressed "
             + "bytes do not decode to what its table entry declares.",
-            "Exits 0 when every chunk decoded cleanly. Any decode failure - a truncated data "
-            + "fork, a chunk whose output falls short of its declared length, a codec this build "
-            + "cannot run - is reported with the failing chunk's index and EntryType and exits 9.",
+            "Exits 0 when every chunk decoded cleanly. A decode failure is reported with the "
+            + "failing chunk's index and EntryType: a codec this build cannot run exits 3, the "
+            + "same code 'info' and 'extract' use for it, since that says nothing about whether "
+            + "the image is intact; a chunk whose bytes do not decode to its declared length - a "
+            + "truncated data fork or similar - is genuinely corrupt and exits 9.",
             "Opening the image can still fail first, with the exit code that failure already "
             + "has: no such file (2), a container this build has never parsed (3), a passphrase "
             + "that did not work (4).",
@@ -206,11 +208,11 @@ public sealed class VerifyCommand : ICliCommand
             }
             catch (DmgStreamException stream)
             {
-                return Fail(context, ordinal, extent.EntryType, stream.Error.ToString());
+                return Fail(context, ordinal, extent.EntryType, stream.Error.Code, stream.Error.ToString());
             }
             catch (Exception exception) when (exception is IOException or EndOfStreamException)
             {
-                return Fail(context, ordinal, extent.EntryType, exception.Message);
+                return Fail(context, ordinal, extent.EntryType, DmgExitCode.CorruptImage, exception.Message);
             }
         }
 
@@ -263,14 +265,31 @@ public sealed class VerifyCommand : ICliCommand
         return DmgExitCode.Success;
     }
 
-    /// <summary>Reports the first chunk that failed to decode, as the story requires.</summary>
-    private static DmgExitCode Fail(CliContext context, int ordinal, ChunkEntryType entryType, string detail)
+    /// <summary>
+    /// Reports the first chunk that failed to decode, as the story requires. An
+    /// unsupported codec is reported and coded exactly like <c>info</c> and
+    /// <c>extract</c> report it - <see cref="DmgExitCode.UnsupportedFormat"/>, not
+    /// corrupt - because the image itself may be perfectly intact; every other
+    /// decode failure is genuinely <see cref="DmgExitCode.CorruptImage"/>.
+    /// </summary>
+    private static DmgExitCode Fail(
+        CliContext context,
+        int ordinal,
+        ChunkEntryType entryType,
+        DmgExitCode code,
+        string detail)
     {
-        context.Output.Error(DmgError.Corrupt(
-            $"Chunk {ordinal} ({entryType}) failed to decode.",
-            detail));
+        DmgError error = code == DmgExitCode.UnsupportedFormat
+            ? DmgError.Unsupported(
+                $"Chunk {ordinal} ({entryType}) uses a codec this build has no decoder for.",
+                detail)
+            : DmgError.Corrupt(
+                $"Chunk {ordinal} ({entryType}) failed to decode.",
+                detail);
 
-        return DmgExitCode.CorruptImage;
+        context.Output.Error(error);
+
+        return error.Code;
     }
 
     /// <summary>
