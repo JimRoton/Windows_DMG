@@ -191,6 +191,11 @@ public sealed class FakeVirtualDiskService : IVirtualDiskService
             return Result.Failure(DetachFailure);
         }
 
+        if (disk.DetachFailure is not null)
+        {
+            return Result.Failure(disk.DetachFailure);
+        }
+
         if (!disk.IsAttached)
         {
             return Result.Failure(
@@ -316,6 +321,13 @@ public sealed class FakeVirtualDisk
     /// <summary>When set, attaching this particular disk fails with this error.</summary>
     public DmgError? AttachFailure { get; set; }
 
+    /// <summary>
+    /// When set, detaching this particular disk fails with this error - the shape
+    /// of "a handle is still open on the volume": the disk stays attached, and the
+    /// registry entry for it must stay too.
+    /// </summary>
+    public DmgError? DetachFailure { get; set; }
+
     /// <summary>How many handles to this disk are open.</summary>
     public int OpenCount { get; internal set; }
 
@@ -324,6 +336,22 @@ public sealed class FakeVirtualDisk
 
     /// <summary>How many times this disk has been detached, including implicit detaches.</summary>
     public int DetachCount { get; internal set; }
+
+    /// <summary>
+    /// Marks the disk attached the way an actual <c>dmg mount</c> leaves one:
+    /// with permanent lifetime, so that opening and closing a handle just to
+    /// check on it - what registry reconciliation (S8.8) does - does not
+    /// accidentally detach it. Tests that want to model a disk attached without
+    /// permanent lifetime should set <see cref="IsAttached"/> and
+    /// <see cref="PermanentLifetime"/> directly instead.
+    /// </summary>
+    public FakeVirtualDisk MarkAttached()
+    {
+        IsAttached = true;
+        PermanentLifetime = true;
+
+        return this;
+    }
 }
 
 /// <summary>The fake's handle. Closing it mirrors what closing a real one does.</summary>
