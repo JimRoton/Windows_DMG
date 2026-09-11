@@ -29,4 +29,11 @@
     <ProjectReference Include="..\..\src\Dmg.Cli\Dmg.Cli.csproj" />
   </ItemGroup>
 
+  <!-- The two small, checked-in fixtures this suite mounts - see Fixtures/README.md.
+       Copied next to dmg.exe (itself copied here by the ProjectReference above) so
+       DmgProcess and E2eFixtures can find both at a fixed, predictable path. -->
+  <ItemGroup>
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
