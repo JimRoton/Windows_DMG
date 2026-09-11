@@ -44,6 +44,7 @@ namespace Dmg.Cli.Output;
 [JsonSerializable(typeof(MountPayload))]
 [JsonSerializable(typeof(UnmountPayload))]
 [JsonSerializable(typeof(UnmountAllPayload))]
+[JsonSerializable(typeof(MountListPayload))]
 public sealed partial class CliJson : JsonSerializerContext
 {
     private static CliJson? _readable;

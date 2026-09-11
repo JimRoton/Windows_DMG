@@ -156,3 +156,25 @@ internal sealed class FakeFreeSpaceProbe(long availableBytes) : IFreeSpaceProbe
 {
     public Result<long> AvailableBytes(string path) => Result<long>.Success(availableBytes);
 }
+
+/// <summary>
+/// Answers the filesystem for a drive letter from a table a test fills in, for
+/// <see cref="ListCommandTests"/>. A letter nobody registered fails, the same way
+/// the real probe fails for a drive that is not ready.
+/// </summary>
+internal sealed class FakeVolumeFilesystemProbe : IVolumeFilesystemProbe
+{
+    private readonly Dictionary<string, string> _filesystems = new(StringComparer.OrdinalIgnoreCase);
+
+    public FakeVolumeFilesystemProbe With(string driveLetter, string filesystem)
+    {
+        _filesystems[driveLetter] = filesystem;
+
+        return this;
+    }
+
+    public Result<string> Filesystem(string driveLetter) =>
+        _filesystems.TryGetValue(driveLetter, out string? filesystem)
+            ? Result<string>.Success(filesystem)
+            : Result<string>.Failure(DmgError.Internal($"fake: no filesystem registered for {driveLetter}:"));
+}
