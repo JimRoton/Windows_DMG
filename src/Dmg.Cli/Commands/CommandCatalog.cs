@@ -21,6 +21,7 @@ public static class CommandCatalog
         // the two that describe the tool itself come last. The mount family
         // arrives in epic 10 and slots in above `help`. Registration is
         // deliberately a one-line edit here rather than a switch elsewhere.
+        yield return new InfoCommand();
         yield return new HelpCommand();
         yield return new VersionCommand();
     }

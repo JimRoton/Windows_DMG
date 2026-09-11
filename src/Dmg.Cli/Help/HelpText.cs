@@ -1,7 +1,8 @@
 using System.Text;
 using Dmg.Cli.Commands;
-using Dmg.Core.Diagnostics;
+using Dmg.Cli.Output;
 using Dmg.Cli.Parsing;
+using Dmg.Core.Diagnostics;
 
 namespace Dmg.Cli.Help;
 
@@ -106,7 +107,11 @@ public static class HelpText
         foreach (string note in spec.Notes)
         {
             text.AppendLine();
-            text.AppendLine(note);
+
+            foreach (string line in TextWrap.Wrap(note, TextWrap.LineWidth))
+            {
+                text.AppendLine(line);
+            }
         }
 
         return text.ToString();
