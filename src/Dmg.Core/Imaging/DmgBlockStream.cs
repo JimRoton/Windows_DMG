@@ -54,7 +54,11 @@ namespace Dmg.Core.Imaging;
 /// <para>
 /// <b>Not thread-safe.</b> Like every other <see cref="Stream"/>, one instance
 /// serves one reader at a time; it has a single <see cref="Position"/> and
-/// concurrent reads would fight over it.
+/// concurrent reads would fight over it. S5.4's sequential-read prefetch runs a
+/// decode of the next chunk on a background thread of its own, but that is an
+/// internal implementation detail with its own locking around the source stream
+/// and the chunk cache - it does not make it safe to call in from a second
+/// thread of the caller's.
 /// </para>
 /// </remarks>
 public sealed class DmgBlockStream : Stream
@@ -82,11 +86,19 @@ public sealed class DmgBlockStream : Stream
     public const long DefaultCacheCapacityBytes = 64L * 1024 * 1024;
 
     private readonly Stream _source;
+    private readonly object _sourceLock = new();
     private readonly bool _leaveOpen;
     private readonly ChunkDecoderRegistry _registry;
     private readonly Extent[] _extents;
     private readonly ulong[] _extentStarts;
     private readonly ChunkCache _cache;
+    private readonly bool _prefetchEnabled;
+
+    // S5.4: created lazily, the first time a sequential run is long enough to act
+    // on. A stream that is only ever read randomly never pays for the thread.
+    private ChunkPrefetcher? _prefetcher;
+    private int _lastAccessedOrdinal = -1;
+    private int _sequentialStreak;
 
     private long _position;
     private bool _disposed;
@@ -96,12 +108,14 @@ public sealed class DmgBlockStream : Stream
         bool leaveOpen,
         DmgImage image,
         ChunkDecoderRegistry registry,
-        ChunkCache cache)
+        ChunkCache cache,
+        bool prefetchEnabled)
     {
         _source = source;
         _leaveOpen = leaveOpen;
         _registry = registry;
         _cache = cache;
+        _prefetchEnabled = prefetchEnabled;
         Image = image;
 
         // A flat copy of the extents, and their start sectors alongside. The index
@@ -170,6 +184,12 @@ public sealed class DmgBlockStream : Stream
     /// disabling the stream - S5.2 requires reads to come out identical either
     /// way, only slower at zero.
     /// </param>
+    /// <param name="enablePrefetch">
+    /// Whether a detected sequential-read run may decode the next chunk on a
+    /// background thread ahead of being asked for it (S5.4). A cache too small to
+    /// hold the next chunk disables prefetching for it regardless of this flag -
+    /// there would be nowhere to keep the result.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="cacheCapacityBytes"/> is negative.
     /// </exception>
@@ -177,14 +197,15 @@ public sealed class DmgBlockStream : Stream
         Stream source,
         bool leaveOpen = false,
         ChunkDecoderRegistry? registry = null,
-        long cacheCapacityBytes = DefaultCacheCapacityBytes)
+        long cacheCapacityBytes = DefaultCacheCapacityBytes,
+        bool enablePrefetch = true)
     {
         ArgumentNullException.ThrowIfNull(source);
 
         Result<DmgImage> opened = DmgImage.Open(source);
 
         return opened.TryGetValue(out DmgImage? image)
-            ? Create(source, image, leaveOpen, registry, cacheCapacityBytes)
+            ? Create(source, image, leaveOpen, registry, cacheCapacityBytes, enablePrefetch)
             : opened.CastFailure<DmgBlockStream>();
     }
 
@@ -200,6 +221,10 @@ public sealed class DmgBlockStream : Stream
     /// The most decoded bytes the chunk cache may hold at once. See
     /// <see cref="Open"/> for the zero-disables-caching contract.
     /// </param>
+    /// <param name="enablePrefetch">
+    /// Whether a detected sequential-read run may prefetch the next chunk on a
+    /// background thread. See <see cref="Open"/>.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="cacheCapacityBytes"/> is negative.
     /// </exception>
@@ -208,7 +233,8 @@ public sealed class DmgBlockStream : Stream
         DmgImage image,
         bool leaveOpen = false,
         ChunkDecoderRegistry? registry = null,
-        long cacheCapacityBytes = DefaultCacheCapacityBytes)
+        long cacheCapacityBytes = DefaultCacheCapacityBytes,
+        bool enablePrefetch = true)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(image);
@@ -226,7 +252,8 @@ public sealed class DmgBlockStream : Stream
             leaveOpen,
             image,
             registry ?? ChunkDecoderRegistry.Default,
-            new ChunkCache(cacheCapacityBytes)));
+            new ChunkCache(cacheCapacityBytes),
+            enablePrefetch));
     }
 
     /// <summary>
@@ -398,6 +425,12 @@ public sealed class DmgBlockStream : Stream
         {
             _disposed = true;
 
+            // Stop and join the prefetch thread before touching the source: it
+            // may be mid-read through the very lock that guards it, and a
+            // background read racing a Dispose of the source would be undefined
+            // behaviour on the underlying stream.
+            _prefetcher?.Dispose();
+
             if (disposing && !_leaveOpen)
             {
                 _source.Dispose();
@@ -475,20 +508,98 @@ public sealed class DmgBlockStream : Stream
     }
 
     /// <summary>
-    /// The fully decoded bytes of one stored chunk - from the cache if S5.2
-    /// already put it there, decoded fresh otherwise.
+    /// The fully decoded bytes of one stored chunk - from the cache if S5.2 (or a
+    /// same-chunk read a moment ago, or S5.4's prefetch) already put it there,
+    /// decoded fresh otherwise.
     /// </summary>
     private byte[] DecodedChunk(int ordinal, Extent extent)
     {
         if (_cache.TryGet(ordinal, out byte[] cached))
         {
+            NoteSequentialAccess(ordinal);
             return cached;
         }
 
         byte[] decoded = Decode(extent);
         _cache.Set(ordinal, decoded);
 
+        NoteSequentialAccess(ordinal);
         return decoded;
+    }
+
+    /// <summary>
+    /// S5.4: tracks whether chunk access is walking the extents in order, and
+    /// once two accesses in a row have, asks the background prefetcher for the
+    /// one after this one.
+    /// </summary>
+    /// <remarks>
+    /// Waiting for a streak of two rather than acting on the very first access
+    /// keeps a single random seek from spawning a needless prefetch thread - the
+    /// common case for the boundary and codec-conformance suites, which seek
+    /// around a small image far more than they stream through a large one.
+    /// </remarks>
+    private void NoteSequentialAccess(int ordinal)
+    {
+        bool sequential = ordinal == _lastAccessedOrdinal + 1;
+        _sequentialStreak = sequential ? _sequentialStreak + 1 : 1;
+        _lastAccessedOrdinal = ordinal;
+
+        if (!_prefetchEnabled || _sequentialStreak < 2)
+        {
+            return;
+        }
+
+        int nextOrdinal = ordinal + 1;
+
+        if (nextOrdinal >= _extents.Length || _cache.Contains(nextOrdinal))
+        {
+            return;
+        }
+
+        Extent next = _extents[nextOrdinal];
+        uint entryType = (uint)next.EntryType;
+
+        if (_registry.TryGetDecoder(entryType, out IChunkDecoder? decoder) && !decoder.ReadsDataFork)
+        {
+            // Implied payload: producing it is not I/O or decompression, just a
+            // fill of a caller's buffer we do not have yet. Nothing to gain by
+            // doing it early.
+            return;
+        }
+
+        Result<int> declared = ChunkDecoderRegistry.DecodedLength((long)next.SectorCount);
+
+        if (!declared.TryGetValue(out int declaredLength) || !_cache.CanHold(declaredLength))
+        {
+            // Cache can't hold it (or the length is malformed and Decode will say
+            // so properly, synchronously, when the caller gets there) - disabled,
+            // per S5.4's contract, rather than decoding something just to drop it.
+            return;
+        }
+
+        (_prefetcher ??= new ChunkPrefetcher(PrefetchChunk)).Request(nextOrdinal);
+    }
+
+    /// <summary>
+    /// Decodes one chunk on the prefetch thread and caches the result. A failure
+    /// here (an unsupported codec, a corrupt chunk) propagates to
+    /// <see cref="ChunkPrefetcher"/>, which swallows it by design - see its
+    /// remarks: the caller's own read reaches the same chunk and reports the
+    /// failure properly, synchronously, when it does.
+    /// </summary>
+    private void PrefetchChunk(int ordinal)
+    {
+        if (_disposed || _cache.Contains(ordinal) || (uint)ordinal >= (uint)_extents.Length)
+        {
+            return;
+        }
+
+        byte[] decoded = Decode(_extents[ordinal]);
+
+        if (!_disposed)
+        {
+            _cache.Set(ordinal, decoded);
+        }
     }
 
     /// <summary>
@@ -549,6 +660,12 @@ public sealed class DmgBlockStream : Stream
     }
 
     /// <summary>Reads an extent's compressed bytes out of the source stream.</summary>
+    /// <remarks>
+    /// Locked: <see cref="_source"/> has one <see cref="Stream.Position"/>, and
+    /// S5.4's background prefetch thread can be in here at the same moment as the
+    /// caller's own read. The lock only spans the seek-and-read - decoding, which
+    /// is the part actually worth doing off-thread, happens outside it.
+    /// </remarks>
     private void ReadDataFork(Extent extent, Span<byte> buffer)
     {
         Result<long> located = Image.DataForkOffsetOf(extent);
@@ -560,8 +677,11 @@ public sealed class DmgBlockStream : Stream
 
         try
         {
-            _source.Seek(offset, SeekOrigin.Begin);
-            _source.ReadExactly(buffer);
+            lock (_sourceLock)
+            {
+                _source.Seek(offset, SeekOrigin.Begin);
+                _source.ReadExactly(buffer);
+            }
         }
         catch (Exception exception)
             when (exception is EndOfStreamException or IOException or ArgumentException)
