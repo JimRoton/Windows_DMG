@@ -10,14 +10,10 @@ namespace Dmg.Core.Tests.Crypto;
 /// </summary>
 public sealed class EncryptedDmgHeaderTests
 {
-    [Fact]
+    [SkippableFact]
     public void ParsesAHeaderWrittenByHdiutil()
     {
-        if (EncryptedFixtures.Skip(out string? why, "exfat-enc256.dmg"))
-        {
-            Assert.True(true, why);
-            return;
-        }
+        EncryptedFixtures.SkipUnless("exfat-enc256.dmg");
 
         using FileStream file = File.OpenRead(EncryptedFixtures.Path("exfat-enc256.dmg"));
         Result<EncryptedDmgHeader> result = EncryptedDmgHeader.Read(file);
@@ -49,14 +45,10 @@ public sealed class EncryptedDmgHeaderTests
         Assert.Equal(16, header.Uuid.Length);
     }
 
-    [Fact]
+    [SkippableFact]
     public void TheAes128FixtureDiffersOnlyInItsKeySize()
     {
-        if (EncryptedFixtures.Skip(out string? why, "exfat-enc128.dmg"))
-        {
-            Assert.True(true, why);
-            return;
-        }
+        EncryptedFixtures.SkipUnless("exfat-enc128.dmg");
 
         using FileStream file = File.OpenRead(EncryptedFixtures.Path("exfat-enc128.dmg"));
         EncryptedDmgHeader header = Parsed(file);
@@ -371,6 +363,25 @@ internal static class EncryptedFixtures
 
         reason = null;
         return false;
+    }
+
+    /// <summary>
+    /// Skips the calling test - which must be a <c>[SkippableFact]</c> or
+    /// <c>[SkippableTheory]</c> - unless every named fixture is usable.
+    /// </summary>
+    /// <remarks>
+    /// Prefer this to <see cref="Skip"/>. That overload reports absence and lets the
+    /// test <em>pass</em>, which means a run with no corpus is indistinguishable in
+    /// the results from a run that actually decrypted something. This one reports it
+    /// as a skip, so the difference is visible.
+    /// </remarks>
+    public static void SkipUnless(params string[] names)
+    {
+        bool skip = Skip(out string? reason, names);
+
+        // Fully qualified: the unqualified name binds to the method above, not to
+        // xunit's static Skip class.
+        Xunit.Skip.If(skip, reason);
     }
 
     /// <summary>The path of a fixture the caller has already checked with <see cref="Skip"/>.</summary>

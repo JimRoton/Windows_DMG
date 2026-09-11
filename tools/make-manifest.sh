@@ -150,6 +150,10 @@ meta() {                                  # $1 name -> RECIPE FSYS ENC PURPOSE
         RECIPE="$BASE_RECIPE | hdiutil convert -format UDRW -encryption AES-128 -stdinpass"
         FSYS=exFAT;   ENC=true
         PURPOSE="encrcdsa v2 wrapper, AES-128 key length." ;;
+    exfat-enc-udzo.dmg)
+        RECIPE="$BASE_RECIPE | hdiutil convert -format UDZO -encryption AES-256 -stdinpass"
+        FSYS=exFAT;   ENC=true
+        PURPOSE="encrcdsa v2 wrapper around a genuine UDZO UDIF container (S4.10/#91) - the decrypted payload carries a koly trailer, property list and zlib chunk table, unlike exfat-enc256/128 which wrap a flat UDRW stream with no koly at all." ;;
     fat32.dmg)
         RECIPE="hdiutil create -size 48m -fs 'MS-DOS FAT32' -volname DMGFAT32 | hdiutil convert -format UDZO"
         FSYS=FAT32;   PURPOSE="FAT32 probe. 48 MiB because FAT32 needs at least 65525 clusters." ;;
@@ -180,7 +184,7 @@ meta() {                                  # $1 name -> RECIPE FSYS ENC PURPOSE
 
 # Build order == manifest order, so the file is stable across runs.
 ORDER="exfat-raw.dmg exfat-zlib.dmg exfat-udro.dmg exfat-sparse.dmg exfat-enc256.dmg
-       exfat-enc128.dmg fat32.dmg hfsplus.dmg apfs.dmg bzip2.dmg adc.dmg
+       exfat-enc128.dmg exfat-enc-udzo.dmg fat32.dmg hfsplus.dmg apfs.dmg bzip2.dmg adc.dmg
        multipart.dmg zerofill.dmg"
 
 # ------------------------------------------------------------------ hashing
@@ -374,7 +378,7 @@ cat <<JSON
       "note": "$CC_NOTE"
     }
   },
-  "shared_source_note": "exfat-raw, exfat-zlib, exfat-udro, exfat-enc256, exfat-enc128, bzip2 and adc are all converted from one shared 12 MiB exFAT source image, so their decoded_sha256 values must be identical. That equality is itself a test: it isolates the codec and the encryption wrapper from everything else.",
+  "shared_source_note": "exfat-raw, exfat-zlib, exfat-udro, exfat-enc256, exfat-enc128, exfat-enc-udzo, bzip2 and adc are all converted from one shared 12 MiB exFAT source image, so their decoded_sha256 values must be identical. That equality is itself a test: it isolates the codec and the encryption wrapper from everything else.",
   "count": $NDONE,
   "fixtures": [
 JSON
