@@ -333,15 +333,14 @@ The constraint is zero third-party libraries in the shipped binary. It is met.
 | 3DES-EDE-CBC | `System.Security.Cryptography.TripleDES` | .NET BCL | MIT |
 | AES-128/256-CBC | `System.Security.Cryptography.Aes` | .NET BCL | MIT |
 | HMAC-SHA1 | `System.Security.Cryptography.HMACSHA1` | .NET BCL | MIT |
-| SHA-256 (verify) | `System.Security.Cryptography.SHA256` | .NET BCL | MIT |
-| XML property list | `System.Xml.Linq` | .NET BCL | MIT |
+| XML property list | `System.Xml` (`XmlReader`) | .NET BCL | MIT |
 | Base64 | `Convert.FromBase64String` | .NET BCL | MIT |
 | VHD attach / detach | `virtdisk.dll` P/Invoke | Windows OS | OS API |
 | Volume + device enumeration | `kernel32.dll`, `DeviceIoControl` | Windows OS | OS API |
 | Elevation check | `advapi32.dll` token query | Windows OS | OS API |
-| Apple ADC decode | **written here**, ~150 lines | this repo | MIT |
-| VHD footer | **written here**, ~120 lines | this repo | MIT |
-| Argument parsing | **written here**, ~200 lines | this repo | MIT |
+| Apple ADC decode | **written here**, ~200 lines | this repo | MIT |
+| VHD image writer (footer, dynamic header, block allocation table, sparse map) | **written here**, ~2,900 lines | this repo | MIT |
+| Argument parsing | **written here**, ~900 lines | this repo | MIT |
 
 The .NET Base Class Library is part of the runtime, and NativeAOT statically links
 what is used into `dmg.exe`. The shipped artifact is a single native executable
@@ -351,10 +350,13 @@ with no runtime install and no package references.
 
 | Need | Choice | License | Shipped? |
 | --- | --- | --- | --- |
-| Unit test framework | xUnit | Apache-2.0 | **No** — `tests/` only |
+| Unit test framework | xUnit + `xunit.runner.visualstudio` | Apache-2.0 | **No** — `tests/` only |
+| Test host SDK | `Microsoft.NET.Test.Sdk` | MIT | **No** — `tests/` only |
 
-CI enforces this: a build step fails if any `PackageReference` appears in a project
-under `src/`. See [ADR-002](adr/ADR-002-zero-third-party-dependencies.md).
+CI enforces this: a build step (`dependency-guard` in `ci.yml`) fails if any
+`PackageReference` appears in a `.csproj`/`.props`/`.targets` file under `src/`;
+test projects under `tests/` are exempt. See
+[ADR-002](adr/ADR-002-zero-third-party-dependencies.md).
 
 ### If a later version needs the deferred codecs
 
