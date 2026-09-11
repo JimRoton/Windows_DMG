@@ -1,6 +1,6 @@
 # Backlog
 
-**10 epics · 77 stories.** Generated from [docs/02-cli-design.md](docs/02-cli-design.md).
+**10 epics · 84 stories.** Generated from [docs/02-cli-design.md](docs/02-cli-design.md).
 This file is the source of truth; GitHub issues are created from it.
 
 Story IDs are stable. Branch names are `story/S<id>-<slug>`. Every story lists its

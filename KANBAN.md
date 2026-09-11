@@ -8,8 +8,8 @@ information is readable from a clone.
 | --- | --- |
 | Board | <https://github.com/users/JimRoton/projects/4> |
 | Columns | Todo · In Progress · Done |
-| Issues | 10 epics (#1–#10) · 77 stories (#11–#87) |
-| Current state | **87 in Todo · 0 In Progress · 0 Done** |
+| Issues | 10 epics (#1–#10) · 84 stories (#11–#94) |
+| Current state | **0 in Todo · 0 In Progress · 94 Done** |
 
 Each story is a **sub-issue** of its epic, so every epic shows a live completion
 rollup on GitHub without anything needing to be kept in sync by hand.
@@ -39,6 +39,8 @@ rollup on GitHub without anything needing to be kept in sync by hand.
 | S1.4 Fixture generator script | [#14](https://github.com/JimRoton/Windows_DMG/issues/14) | — | L | core |
 | S1.5 Fixture manifest with ground-truth hashes | [#15](https://github.com/JimRoton/Windows_DMG/issues/15) | S1.4 | M | core |
 | S1.6 CI workflows | [#16](https://github.com/JimRoton/Windows_DMG/issues/16) | S1.1 | M | ci |
+| S1.7 CI must fail when a test suite discovers zero tests | [#88](https://github.com/JimRoton/Windows_DMG/issues/88) | S1.6 | S | ci |
+| S1.8 Guard WriteJson against use outside JSON mode | [#89](https://github.com/JimRoton/Windows_DMG/issues/89) | S1.3 | S | core |
 
 ### E2 — UDIF container reader  ([#2](https://github.com/JimRoton/Windows_DMG/issues/2))
 
@@ -53,6 +55,7 @@ rollup on GitHub without anything needing to be kept in sync by hand.
 | S2.7 ExtentIndex with binary search | [#23](https://github.com/JimRoton/Windows_DMG/issues/23) | S2.6 | M | core |
 | S2.8 Image format probe chain | [#24](https://github.com/JimRoton/Windows_DMG/issues/24) | S2.2 | M | core |
 | S2.9 Hostile-input hardening pass over E2 | [#25](https://github.com/JimRoton/Windows_DMG/issues/25) | S2.7,S2.8 | L | core |
+| S2.10 Fixture-absent tests report PASSED instead of SKIPPED | [#92](https://github.com/JimRoton/Windows_DMG/issues/92) | S1.5 | S | core |
 
 ### E3 — Chunk codecs  ([#3](https://github.com/JimRoton/Windows_DMG/issues/3))
 
@@ -66,6 +69,8 @@ rollup on GitHub without anything needing to be kept in sync by hand.
 | S3.6 Decompression-bomb guard | [#31](https://github.com/JimRoton/Windows_DMG/issues/31) | S3.4 | M | core |
 | S3.7 Unsupported codecs report cleanly | [#32](https://github.com/JimRoton/Windows_DMG/issues/32) | S3.1 | S | core |
 | S3.8 Codec conformance suite | [#33](https://github.com/JimRoton/Windows_DMG/issues/33) | S3.4,S3.5,S1.5 | M | core |
+| S3.9 No ground-truth fixture covers raw or zero-fill chunks | [#90](https://github.com/JimRoton/Windows_DMG/issues/90) | S3.8 | S | core |
+| S3.10 Three weak tests and duplicated wire constants | [#93](https://github.com/JimRoton/Windows_DMG/issues/93) | S3.8 | S | core |
 
 ### E4 — Encrypted DMG support  ([#4](https://github.com/JimRoton/Windows_DMG/issues/4))
 
@@ -80,6 +85,7 @@ rollup on GitHub without anything needing to be kept in sync by hand.
 | S4.7 Wrong-passphrase detection | [#40](https://github.com/JimRoton/Windows_DMG/issues/40) | S4.5 | M | core |
 | S4.8 Legacy and FIPS failure modes | [#41](https://github.com/JimRoton/Windows_DMG/issues/41) | S4.3 | M | core |
 | S4.9 Encrypted round-trip tests | [#42](https://github.com/JimRoton/Windows_DMG/issues/42) | S4.7,S1.5 | M | core |
+| S4.10 Encrypted+compressed (UDZO) path has no real fixture | [#91](https://github.com/JimRoton/Windows_DMG/issues/91) | S4.9 | S | core |
 
 ### E5 — Block stream and cache  ([#5](https://github.com/JimRoton/Windows_DMG/issues/5))
 
@@ -143,6 +149,7 @@ rollup on GitHub without anything needing to be kept in sync by hand.
 | S9.9 Help and version | [#78](https://github.com/JimRoton/Windows_DMG/issues/78) | S9.2 | M | core |
 | S9.10 Exit-code contract tests | [#79](https://github.com/JimRoton/Windows_DMG/issues/79) | S9.4,S9.5 | M | core |
 | S9.11 Progress rendering | [#80](https://github.com/JimRoton/Windows_DMG/issues/80) | S9.4 | S | core |
+| S9.12 Wire --dynamic and --cache into dmg mount | [#94](https://github.com/JimRoton/Windows_DMG/issues/94) | S9.4,S7.6 | S | core |
 
 ### E10 — Packaging, docs and QA  ([#10](https://github.com/JimRoton/Windows_DMG/issues/10))
 
