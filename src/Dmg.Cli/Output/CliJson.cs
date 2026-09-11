@@ -42,6 +42,8 @@ namespace Dmg.Cli.Output;
 [JsonSerializable(typeof(VersionPayload))]
 [JsonSerializable(typeof(InfoPayload))]
 [JsonSerializable(typeof(MountPayload))]
+[JsonSerializable(typeof(UnmountPayload))]
+[JsonSerializable(typeof(UnmountAllPayload))]
 public sealed partial class CliJson : JsonSerializerContext
 {
     private static CliJson? _readable;
