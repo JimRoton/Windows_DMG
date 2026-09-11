@@ -140,15 +140,14 @@ public sealed class VerifyCommandTests
     }
 
     [Fact]
-    public void AnUnsupportedCodecIsAChunkFailureLikeAnyOther()
+    public void AnUnsupportedCodecExitsUnsupportedFormatLikeInfoAndExtract()
     {
         // Opening a bzip2 image succeeds - the container parses fine - so the
         // decode pass reaches the first bzip2 chunk and finds no decoder for it.
-        // The story's contract for verify is binary (every chunk decoded, or it
-        // did not), so this is reported exactly like a corrupt chunk would be:
-        // first failing index and EntryType, exit 9. That is deliberately
-        // different from `extract`, which surfaces UnsupportedFormat so a caller
-        // can tell the two apart.
+        // That says nothing about whether the image is intact, so it is coded
+        // exactly like `info` and `extract` code it - 3, not 9 - even though it is
+        // still reported the way every chunk failure is: first failing index and
+        // EntryType named in the message.
         if (Fixtures.Path("bzip2.dmg") is not string path)
         {
             return;
@@ -156,7 +155,7 @@ public sealed class VerifyCommandTests
 
         RecordingOutput output = new();
 
-        Assert.Equal(DmgExitCode.CorruptImage, Command.Execute(new CliContext([path], output.Output)));
+        Assert.Equal(DmgExitCode.UnsupportedFormat, Command.Execute(new CliContext([path], output.Output)));
         Assert.Contains("Chunk", output.Stderr, StringComparison.Ordinal);
         Assert.Contains("Bzip2", output.Stderr, StringComparison.Ordinal);
     }
