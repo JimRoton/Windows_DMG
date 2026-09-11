@@ -51,6 +51,7 @@ reused for anything real.
 | `exfat-sparse.dmg` | `create -size 48m -fs exFAT`, one small file → `convert -format UDZO` | exFAT | Mostly empty, so most chunks are zero-fill / ignore. |
 | `exfat-enc256.dmg` | …→ `convert -format UDRW -encryption AES-256 -stdinpass` | exFAT | `encrcdsa` v2 wrapper, AES-256. |
 | `exfat-enc128.dmg` | …→ `convert -format UDRW -encryption AES-128 -stdinpass` | exFAT | AES-128 key length. |
+| `exfat-enc-udzo.dmg` | …→ `convert -format UDZO -encryption AES-256 -stdinpass` | exFAT | Encrypted **and** compressed. Unlike the two above, the decrypted payload is a real UDIF container — `koly`, plist and zlib chunks. |
 | `fat32.dmg` | `create -size 48m -fs "MS-DOS FAT32"` → `convert -format UDZO` | FAT32 | FAT32 probe. |
 | `hfsplus.dmg` | `create -size 12m -fs "HFS+"` → `convert -format UDZO` | HFS+ | Negative case — must be refused. |
 | `apfs.dmg` | `create -size 32m -fs APFS` → `convert -format UDZO` | APFS | Negative case. |
@@ -59,13 +60,13 @@ reused for anything real.
 | `multipart.dmg` | blank `-layout NONE`, `diskutil partitionDisk … MBR ExFAT ExFAT` → `convert -format UDZO` | exFAT ×2 | Partition selection. |
 | `zerofill.dmg` | `create -srcfolder … -fs exFAT -format UDZO` | exFAT | **Zero-fill** (`0x00000000`) chunks. |
 
-"…" means the shared 12 MiB exFAT source image, so the **seven** fixtures built
+"…" means the shared 12 MiB exFAT source image, so the **eight** fixtures built
 from it — `exfat-raw`, `exfat-zlib`, `exfat-udro`, `exfat-enc256`,
-`exfat-enc128`, `bzip2` and `adc` — decode to **the same raw sector stream**.
-That is deliberate: it lets a test assert that raw, zlib, ADC, bzip2 and both
-encrypted variants all produce byte-identical output, isolating the codec from
-everything else. The manifest bears this out: all seven carry an identical
-`decoded_sha256`.
+`exfat-enc128`, `exfat-enc-udzo`, `bzip2` and `adc` — decode to **the same raw
+sector stream**. That is deliberate: it lets a test assert that raw, zlib, ADC,
+bzip2 and all three encrypted variants produce byte-identical output, isolating
+the codec from everything else. The manifest bears this out: all eight carry an
+identical `decoded_sha256`.
 
 ### `exfat-raw.dmg` is not what its name suggests
 
@@ -122,14 +123,19 @@ ever disagree, `make-manifest.sh` says so loudly, sets `cross_check.result` to
 `convert` ones (encrypted fixtures have no alternative to attach + `dd`), and
 that discrepancy would need chasing before the corpus could be trusted.
 
-### Seven fixtures share one hash
+### Eight fixtures share one hash
 
 `exfat-raw`, `exfat-zlib`, `exfat-udro`, `exfat-enc256`, `exfat-enc128`,
-`bzip2` and `adc` are all converted from the same 12 MiB exFAT source, so all
-seven carry an **identical** `decoded_sha256`. That equality is itself a test:
-raw, zlib, ADC, bzip2 and both encrypted variants must all decode to the same
-sectors, which isolates the codec and the encryption wrapper from everything
-else.
+`exfat-enc-udzo`, `bzip2` and `adc` are all converted from the same 12 MiB exFAT
+source, so all eight carry an **identical** `decoded_sha256`. That equality is
+itself a test: raw, zlib, ADC, bzip2 and all three encrypted variants must all
+decode to the same sectors, which isolates the codec and the encryption wrapper
+from everything else.
+
+`exfat-enc-udzo` is the one that exercises both layers at once: the encryption
+wrapper *and* the chunk codec underneath it have to be right before its bytes
+can match, which neither `exfat-enc256` (encryption over a flat stream) nor
+`exfat-zlib` (codec with no encryption) can prove on its own.
 
 ### The manifest is a snapshot, not a golden value
 

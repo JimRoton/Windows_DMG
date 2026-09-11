@@ -149,12 +149,14 @@ conv() {
     fi
 }
 
-# conv_enc — as conv, but the OUTPUT is encrypted with $PASS.
+# conv_enc — as conv, but the OUTPUT is encrypted with $PASS. $4 (default UDRW)
+# is the destination format: UDRW yields a flat encrypted stream with no koly
+# trailer, UDZO yields a genuine encrypted+compressed UDIF container.
 # (-stdinpass here encrypts the output; it does NOT decrypt the source.)
 conv_enc() {
-    local name="$1" src="$2" cipher="$3"
+    local name="$1" src="$2" cipher="$3" format="${4:-UDRW}"
     rm -f "$OUT/$name"
-    if hdp convert "$src" -format UDRW -encryption "$cipher" -stdinpass \
+    if hdp convert "$src" -format "$format" -encryption "$cipher" -stdinpass \
             -o "$OUT/$name" >/dev/null 2>&1; then
         if verify_enc "$OUT/$name"; then
             ok "$name"
@@ -163,7 +165,7 @@ conv_enc() {
             skip "$name" "created but passphrase did not round-trip"
         fi
     else
-        skip "$name" "hdiutil convert -encryption $cipher failed"
+        skip "$name" "hdiutil convert -format $format -encryption $cipher failed"
     fi
 }
 
@@ -246,13 +248,29 @@ else
     skip exfat-sparse.dmg "hdiutil create -size 48m -fs exFAT failed"
 fi
 
-# 4/5. encrypted fixtures — encrcdsa v2, AES-256 and AES-128
+# 4/5. encrypted fixtures — encrcdsa v2, AES-256 and AES-128. Destination format
+#      UDRW, so each decrypts to a flat sector stream with no koly trailer at
+#      all - see exfat-enc-udzo.dmg below for the encrypted+compressed case that
+#      actually carries one.
 if [ $BASE_OK -eq 1 ]; then
     conv_enc exfat-enc256.dmg "$BASE" AES-256
     conv_enc exfat-enc128.dmg "$BASE" AES-128
 else
     skip exfat-enc256.dmg "$REASON_NOBASE"
     skip exfat-enc128.dmg "$REASON_NOBASE"
+fi
+
+# 5b. exfat-enc-udzo.dmg — encrypted AND compressed (S4.10, issue #91). Unlike
+#     exfat-enc256/128 above, the destination format here is UDZO, so the
+#     decrypted payload is not a flat stream: it is a genuine koly + plist +
+#     blkx UDIF container whose chunks are zlib-compressed. That is the
+#     "decrypt -> find koly -> parse UDIF -> decode chunks" path docs/04 §1
+#     describes, exercised here against a real hdiutil image for the first
+#     time - see fixtures/README.md and EncryptedRoundTripTests.
+if [ $BASE_OK -eq 1 ]; then
+    conv_enc exfat-enc-udzo.dmg "$BASE" AES-256 UDZO
+else
+    skip exfat-enc-udzo.dmg "$REASON_NOBASE"
 fi
 
 # 6. fat32.dmg — FAT32 needs >= 65525 clusters, so it cannot be tiny; we build
@@ -384,7 +402,7 @@ echo
 echo "================ make-fixtures summary ================"
 NP=$(printf '%s' "$PRODUCED" | grep -c . || true)
 NS=$(printf '%s' "$SKIPPED"  | grep -c . || true)
-echo "produced: $NP/13"
+echo "produced: $NP/14"
 printf '%s' "$PRODUCED" | sed 's/^/  + /'
 if [ "$NS" -gt 0 ]; then
     echo "skipped:  $NS"
