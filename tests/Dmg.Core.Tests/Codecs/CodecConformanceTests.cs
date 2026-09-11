@@ -30,9 +30,12 @@ namespace Dmg.Core.Tests.Codecs;
 /// being believed.
 /// </para>
 /// <para>
-/// <b>What is skipped, and why.</b> The encrypted fixtures cannot be decoded at all
-/// until epic E4 builds the encrcdsa layer, so they are reported and stepped over
-/// rather than failed. bzip2 is not skipped - it is asserted to be refused, by name.
+/// <b>What is skipped, and why.</b> This suite opens every image without a
+/// passphrase, so the encrypted fixtures are stepped over here rather than failed;
+/// decrypting them and matching Apple's hashes is <c>EncryptedRoundTripTests</c>'s
+/// job. (That skip once read "until epic E4 builds the encrcdsa layer" - E4 shipped
+/// long ago, and the reason was never the real one.) bzip2 is not skipped - it is
+/// asserted to be refused, by name.
 /// And a machine with no corpus at all (a clean checkout; any CI runner that is not
 /// a Mac) reports that and passes, because a missing fixture is not a defect in the
 /// decoders.
@@ -217,13 +220,27 @@ public sealed class CodecConformanceTests
     }
 
     /// <summary>
-    /// The encrypted fixtures are out of scope until epic E4 implements the encrcdsa
-    /// wrapper. They are named here rather than quietly dropped, so the gap is
-    /// visible in the test output and this test starts failing usefully the day the
-    /// wrapper lands.
+    /// An <c>encrcdsa</c> image is not a UDIF container until it has been unwrapped,
+    /// so decoding one <em>without</em> a passphrase must fail.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This was originally written as a placeholder for "E4 is not built yet", and
+    /// its prose promised it would start failing the day the wrapper landed. It did
+    /// not, because that is not what it asserts - and E4 has since shipped. What it
+    /// actually checks is still worth having: it would catch a regression where the
+    /// plain UDIF reader began accepting encrypted bytes and decoding them to noise
+    /// instead of refusing them.
+    /// </para>
+    /// <para>
+    /// The positive half - decrypting these fixtures and matching Apple's own
+    /// hashes, including the encrypted+compressed <c>exfat-enc-udzo.dmg</c> - lives
+    /// in <c>EncryptedRoundTripTests</c>, which is where a passphrase is plumbed in.
+    /// This suite deliberately opens images without one.
+    /// </para>
+    /// </remarks>
     [SkippableFact]
-    public void EncryptedFixturesAreSkippedUntilTheEncryptionEpic()
+    public void AnEncryptedImageDoesNotDecodeAsAPlainUdifContainer()
     {
         Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
@@ -244,8 +261,8 @@ public sealed class CodecConformanceTests
             }
 
             _output.WriteLine(
-                $"SKIPPED {record.Name}: encrypted ({record.Format}); decoding needs the encrcdsa "
-                + $"layer from epic E4, which is not built. Our reader says: {decoded.Error.Message}");
+                $"{record.Name}: encrypted ({record.Format}); correctly refused without a "
+                + $"passphrase - {decoded.Error.Message}");
         }
     }
 
@@ -525,8 +542,8 @@ public sealed class CodecConformanceTests
         if (found.Encrypted)
         {
             throw new SkipException(
-                $"{fixtureName}: encrypted. Decoding it needs the encrcdsa layer from epic E4, "
-                + "which is not built. See EncryptedFixturesAreSkippedUntilTheEncryptionEpic.");
+                $"{fixtureName}: encrypted. This suite opens images without a passphrase; the "
+                + "decrypted round trip lives in EncryptedRoundTripTests.");
         }
 
         return found;
