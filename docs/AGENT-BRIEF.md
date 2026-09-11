@@ -2,6 +2,18 @@
 
 Read this once. Your task prompt adds only the stories and their acceptance criteria.
 
+## Token budget — this matters
+
+The user pays for every token. Work lean:
+- Read only the files named in your prompt. Use `grep -n` and `sed -n 'A,Bp'` to read the
+  part you need, not whole files. Never `cat` large files or directories.
+- Run builds and tests quietly and tail: `dotnet build -v q 2>&1 | tail -3`,
+  `dotnet test <proj> -v q 2>&1 | tail -3`. Only expand output when something fails.
+- Batch shell commands into one call where possible.
+- Do not generate fixtures unless your stories actually need real images.
+- Do not re-verify work already merged; trust it unless your change breaks it.
+- Don't write long commit bodies — two or three sentences.
+
 ## Rules
 
 - **Do not explore the repo.** Read only the files your prompt names. Agents have
