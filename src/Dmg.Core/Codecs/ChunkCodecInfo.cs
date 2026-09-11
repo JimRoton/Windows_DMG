@@ -34,7 +34,7 @@ public sealed record ChunkCodecInfo(
     /// False means the value is not in the format at all, which usually means a
     /// damaged chunk table rather than a codec we are missing.
     /// </summary>
-    public bool IsRecognised => ChunkEntryType.IsRecognised(EntryType);
+    public bool IsRecognised => ChunkEntryTypeCodes.IsRecognised(EntryType);
 
     /// <inheritdoc />
     public override string ToString() =>

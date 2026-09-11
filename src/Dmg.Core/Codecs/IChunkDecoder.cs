@@ -25,7 +25,11 @@ namespace Dmg.Core.Codecs;
 /// </remarks>
 public interface IChunkDecoder
 {
-    /// <summary>The blkx <c>EntryType</c> this decoder claims. See <see cref="ChunkEntryType"/>.</summary>
+    /// <summary>
+    /// The blkx <c>EntryType</c> this decoder claims. See
+    /// <see cref="ChunkEntryTypeCodes"/> and
+    /// <see cref="Dmg.Core.Containers.ChunkEntryType"/>.
+    /// </summary>
     uint EntryType { get; }
 
     /// <summary>

@@ -12,20 +12,20 @@ public sealed class ZeroChunkDecoderTests
     private const int SectorSize = ChunkDecoderRegistry.BytesPerSector;
 
     public static TheoryData<uint> ZeroEmittingEntryTypes => new(
-        ChunkEntryType.ZeroFill,
-        ChunkEntryType.Ignore);
+        ChunkEntryTypeCodes.ZeroFill,
+        ChunkEntryTypeCodes.Ignore);
 
     [Fact]
     public void ZeroFillClaimsEntryTypeZero()
     {
-        Assert.Equal(ChunkEntryType.ZeroFill, ZeroChunkDecoder.ZeroFill.EntryType);
+        Assert.Equal(ChunkEntryTypeCodes.ZeroFill, ZeroChunkDecoder.ZeroFill.EntryType);
         Assert.Equal("zero-fill", ZeroChunkDecoder.ZeroFill.Name);
     }
 
     [Fact]
     public void IgnoreClaimsEntryTypeTwo()
     {
-        Assert.Equal(ChunkEntryType.Ignore, ZeroChunkDecoder.Ignore.EntryType);
+        Assert.Equal(ChunkEntryTypeCodes.Ignore, ZeroChunkDecoder.Ignore.EntryType);
         Assert.Equal("ignore", ZeroChunkDecoder.Ignore.Name);
     }
 

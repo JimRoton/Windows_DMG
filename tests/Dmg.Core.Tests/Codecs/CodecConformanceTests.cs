@@ -65,11 +65,11 @@ public sealed class CodecConformanceTests
     /// </summary>
     private static readonly uint[] CodecsThisCorpusCarries =
     [
-        ChunkEntryType.ZeroFill,
-        ChunkEntryType.Raw,
-        ChunkEntryType.Ignore,
-        ChunkEntryType.AppleAdc,
-        ChunkEntryType.Zlib,
+        ChunkEntryTypeCodes.ZeroFill,
+        ChunkEntryTypeCodes.Raw,
+        ChunkEntryTypeCodes.Ignore,
+        ChunkEntryTypeCodes.AppleAdc,
+        ChunkEntryTypeCodes.Zlib,
     ];
 
     /// <summary>
@@ -199,7 +199,7 @@ public sealed class CodecConformanceTests
 
         // Describing an image we cannot open must work without touching the data
         // fork: this is exactly what `dmg info` will do with a UDBZ image.
-        Assert.Contains(ChunkEntryType.Bzip2, entryTypes);
+        Assert.Contains(ChunkEntryTypeCodes.Bzip2, entryTypes);
 
         Result<DecodedImage> decoded = UdifImageDecoder.Decode(record.Path);
 
@@ -387,14 +387,14 @@ public sealed class CodecConformanceTests
         foreach (uint entryType in coverage.Keys.Order())
         {
             _output.WriteLine(
-                $"{ChunkEntryType.NameOf(entryType),-10} <- {string.Join(", ", coverage[entryType])}");
+                $"{ChunkEntryTypeCodes.NameOf(entryType),-10} <- {string.Join(", ", coverage[entryType])}");
         }
 
         foreach (uint entryType in CodecsThisCorpusCarries)
         {
             Assert.True(
                 coverage.ContainsKey(entryType),
-                $"No fixture in the corpus exercised the {ChunkEntryType.NameOf(entryType)} decoder "
+                $"No fixture in the corpus exercised the {ChunkEntryTypeCodes.NameOf(entryType)} decoder "
                 + "against hdiutil's output, so this run did not actually verify it.");
         }
 
@@ -409,7 +409,7 @@ public sealed class CodecConformanceTests
             uncovered.Length == 0,
             "Every decoder this build registers is supposed to be covered by a real hdiutil "
             + "image, and these are not: "
-            + string.Join(", ", uncovered.Select(ChunkEntryType.NameOf))
+            + string.Join(", ", uncovered.Select(ChunkEntryTypeCodes.NameOf))
             + ". " + FixtureCorpus.Regenerate);
     }
 
@@ -438,8 +438,8 @@ public sealed class CodecConformanceTests
     {
         Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
-        AssertCarriesAndMatches(RawChunkFixture, ChunkEntryType.Raw);
-        AssertCarriesAndMatches(ZeroFillFixture, ChunkEntryType.ZeroFill);
+        AssertCarriesAndMatches(RawChunkFixture, ChunkEntryTypeCodes.Raw);
+        AssertCarriesAndMatches(ZeroFillFixture, ChunkEntryTypeCodes.ZeroFill);
     }
 
     /// <summary>
@@ -449,7 +449,7 @@ public sealed class CodecConformanceTests
     /// </summary>
     private void AssertCarriesAndMatches(string fixtureName, uint entryType)
     {
-        string codec = ChunkEntryType.NameOf(entryType);
+        string codec = ChunkEntryTypeCodes.NameOf(entryType);
         FixtureRecord? record = FixtureCorpus.Find(fixtureName);
 
         Assert.True(
@@ -469,7 +469,7 @@ public sealed class CodecConformanceTests
         Assert.True(
             entryTypes.Contains(entryType),
             $"{fixtureName} was added to carry {codec} chunks and its chunk table has none. "
-            + $"It holds: {string.Join(", ", entryTypes.Distinct().Order().Select(ChunkEntryType.NameOf))}. "
+            + $"It holds: {string.Join(", ", entryTypes.Distinct().Order().Select(ChunkEntryTypeCodes.NameOf))}. "
             + "The hdiutil recipe has changed behaviour; see the notes in tools/make-fixtures.sh.");
 
         Result<DecodedImage> decoded = UdifImageDecoder.Decode(record.Path);
@@ -494,7 +494,7 @@ public sealed class CodecConformanceTests
         _output.WriteLine(
             $"{fixtureName}: {sectors:N0} {codec} sector(s) among "
             + string.Join(", ", image.SectorsByEntryType.OrderBy(pair => pair.Key)
-                .Select(pair => $"{ChunkEntryType.NameOf(pair.Key)}={pair.Value:N0}"))
+                .Select(pair => $"{ChunkEntryTypeCodes.NameOf(pair.Key)}={pair.Value:N0}"))
             + $"; {ConformanceFormat.Bytes(image.HashedLength)} decoded, and the SHA-256 is "
             + "hdiutil's.");
     }

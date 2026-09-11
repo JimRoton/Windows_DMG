@@ -46,7 +46,7 @@ public sealed class ZlibChunkDecoder : IChunkDecoder
     public static ZlibChunkDecoder Instance { get; } = new();
 
     /// <inheritdoc />
-    public uint EntryType => ChunkEntryType.Zlib;
+    public uint EntryType => ChunkEntryTypeCodes.Zlib;
 
     /// <inheritdoc />
     public string Name => "zlib";

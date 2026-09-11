@@ -143,6 +143,12 @@ public sealed class BigEndianTests
     [InlineData(1ul, 100ul, 100ul, false)]
     [InlineData(101ul, 0ul, 100ul, false)]
     [InlineData(ulong.MaxValue, ulong.MaxValue, 100ul, false)]
+    // The row above wraps to a huge value even under the naive
+    // `offset + length <= limit`, so it is right by accident. This row wraps to
+    // 39 - comfortably under the 100 limit - so a naive implementation reports
+    // "fits" for an offset that is nowhere near the addressable range, and only
+    // the real offset-first bounds check (offset > limit => false) catches it.
+    [InlineData(ulong.MaxValue - 10, 50ul, 100ul, false)]
     public void RangeChecksDoNotOverflow(ulong offset, ulong length, ulong limit, bool expected) =>
         Assert.Equal(expected, BigEndian.RangeFitsWithin(offset, length, limit));
 }

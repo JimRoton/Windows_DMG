@@ -1,54 +1,65 @@
+using Dmg.Core.Containers;
+
 namespace Dmg.Core.Codecs;
 
 /// <summary>
-/// The <c>EntryType</c> values that can appear in a UDIF blkx chunk descriptor,
-/// and the names we print for them.
+/// The <c>uint</c> view of <see cref="Containers.ChunkEntryType"/> that the codec
+/// layer works in, plus the names we print for each value.
 /// </summary>
 /// <remarks>
 /// <para>
-/// These are wire constants: they come off disk, so they are <see cref="uint"/>
-/// and they never change. Two of them - <see cref="Comment"/> and
-/// <see cref="Terminator"/> - are structural markers rather than codecs; they
-/// carry no payload and are never decoded.
+/// <see cref="Containers.ChunkEntryType"/> is the one place the wire values
+/// themselves are written down; every constant here is a cast of that enum rather
+/// than a second copy of the hex, so the two can no longer drift apart the way two
+/// independently hand-maintained lists of the same ten values did. This type used
+/// to define its own constants under the same name as that enum - two public
+/// <c>ChunkEntryType</c>s in different namespaces, which is exactly the kind of
+/// thing that produces a <c>CS0104</c> ambiguity the moment one file needs both
+/// namespaces. It is named <see cref="ChunkEntryTypeCodes"/> so that can't happen
+/// again.
 /// </para>
 /// <para>
-/// A value not listed here is not automatically a corrupt image. It is a chunk
-/// this build cannot decode, which only matters if a read actually touches it.
-/// <c>dmg info</c> must be able to describe such an image without failing, which
-/// is why <see cref="NameOf"/> answers for every possible value.
+/// The codec layer stays on <c>uint</c> rather than the enum deliberately:
+/// <see cref="IChunkDecoder.EntryType"/>, <see cref="ChunkDecoderRegistry"/> and
+/// <see cref="ChunkCodecInfo"/> are public surface other projects (<c>Dmg.Cli</c>)
+/// already consume as <c>uint</c>, and a value the format does not define at all
+/// still has to flow through this layer to be reported by <c>dmg info</c> - the
+/// enum accepts that too (a C# enum backed by <c>uint</c> is not restricted to its
+/// named members), but the codec layer's own arithmetic and dictionary keys have
+/// no need for the enum's type identity.
 /// </para>
 /// </remarks>
-public static class ChunkEntryType
+public static class ChunkEntryTypeCodes
 {
     /// <summary>Zero fill: emit zeros, read nothing from the data fork.</summary>
-    public const uint ZeroFill = 0x0000_0000;
+    public const uint ZeroFill = (uint)ChunkEntryType.ZeroFill;
 
     /// <summary>Raw: the data fork bytes are the payload, uncompressed.</summary>
-    public const uint Raw = 0x0000_0001;
+    public const uint Raw = (uint)ChunkEntryType.Raw;
 
     /// <summary>Ignore / free: unallocated space. Emit zeros, read nothing.</summary>
-    public const uint Ignore = 0x0000_0002;
+    public const uint Ignore = (uint)ChunkEntryType.Ignore;
 
     /// <summary>Apple ADC, the LZ variant used by UDCO images.</summary>
-    public const uint AppleAdc = 0x8000_0004;
+    public const uint AppleAdc = (uint)ChunkEntryType.AppleAdc;
 
     /// <summary>zlib (RFC 1950), the UDZO default.</summary>
-    public const uint Zlib = 0x8000_0005;
+    public const uint Zlib = (uint)ChunkEntryType.Zlib;
 
     /// <summary>bzip2, as used by UDBZ. Recognised, not decoded.</summary>
-    public const uint Bzip2 = 0x8000_0006;
+    public const uint Bzip2 = (uint)ChunkEntryType.Bzip2;
 
     /// <summary>LZFSE, as used by ULFO. Recognised, not decoded.</summary>
-    public const uint Lzfse = 0x8000_0007;
+    public const uint Lzfse = (uint)ChunkEntryType.Lzfse;
 
     /// <summary>LZMA, as used by ULMO. Recognised, not decoded.</summary>
-    public const uint Lzma = 0x8000_0008;
+    public const uint Lzma = (uint)ChunkEntryType.Lzma;
 
     /// <summary>A comment entry. Structural: skipped, never decoded.</summary>
-    public const uint Comment = 0x7FFF_FFFE;
+    public const uint Comment = (uint)ChunkEntryType.Comment;
 
     /// <summary>The end-of-list marker. Structural: never decoded.</summary>
-    public const uint Terminator = 0xFFFF_FFFF;
+    public const uint Terminator = (uint)ChunkEntryType.Terminator;
 
     /// <summary>
     /// Every entry type the UDIF format defines, ascending - decodable or not.

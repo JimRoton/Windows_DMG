@@ -17,7 +17,7 @@ public sealed class RawChunkDecoderTests
     [Fact]
     public void ItClaimsEntryTypeOneAndReadsTheDataFork()
     {
-        Assert.Equal(ChunkEntryType.Raw, RawChunkDecoder.Instance.EntryType);
+        Assert.Equal(ChunkEntryTypeCodes.Raw, RawChunkDecoder.Instance.EntryType);
         Assert.Equal("raw", RawChunkDecoder.Instance.Name);
         Assert.True(RawChunkDecoder.Instance.ReadsDataFork);
     }
@@ -29,7 +29,7 @@ public sealed class RawChunkDecoderTests
         byte[] destination = new byte[2 * SectorSize];
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Raw, source, destination, 2);
+            ChunkEntryTypeCodes.Raw, source, destination, 2);
 
         Assert.True(result.Ok);
         Assert.Equal(source.Length, result.Value);
@@ -44,7 +44,7 @@ public sealed class RawChunkDecoderTests
         Array.Fill(destination, (byte)0x77);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Raw, source, destination, 1);
+            ChunkEntryTypeCodes.Raw, source, destination, 1);
 
         Assert.True(result.Ok);
         Assert.Equal(source, destination[..SectorSize]);
@@ -58,7 +58,7 @@ public sealed class RawChunkDecoderTests
         byte[] source = Pattern(SectorSize - 1);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Raw, source, new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Raw, source, new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -71,7 +71,7 @@ public sealed class RawChunkDecoderTests
         byte[] source = Pattern(SectorSize + 1);
 
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Raw, source, new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Raw, source, new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -81,7 +81,7 @@ public sealed class RawChunkDecoderTests
     public void AnEmptyChunkIsCorruptWhenSectorsWereDeclared()
     {
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Raw, [], new byte[SectorSize], 1);
+            ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], 1);
 
         Assert.False(result.Ok);
         Assert.Equal(DmgExitCode.CorruptImage, result.Error.Code);
@@ -103,7 +103,7 @@ public sealed class RawChunkDecoderTests
     public void AZeroSectorRawChunkWithNoPayloadIsFine()
     {
         Result<int> result = ChunkDecoderRegistry.Default.Decode(
-            ChunkEntryType.Raw, [], new byte[SectorSize], 0);
+            ChunkEntryTypeCodes.Raw, [], new byte[SectorSize], 0);
 
         Assert.True(result.Ok);
         Assert.Equal(0, result.Value);
@@ -122,7 +122,7 @@ public sealed class RawChunkDecoderTests
             int offset = chunk * 2 * SectorSize;
 
             Result<int> result = ChunkDecoderRegistry.Default.Decode(
-                ChunkEntryType.Raw,
+                ChunkEntryTypeCodes.Raw,
                 original.AsSpan(offset, 2 * SectorSize),
                 rebuilt.AsSpan(offset),
                 2);

@@ -90,7 +90,7 @@ public sealed class ChunkDecoderRegistry
         {
             ArgumentNullException.ThrowIfNull(decoder, nameof(decoders));
 
-            if (ChunkEntryType.IsStructural(decoder.EntryType))
+            if (ChunkEntryTypeCodes.IsStructural(decoder.EntryType))
             {
                 throw new ArgumentException(
                     $"{decoder.Name} claims entry type 0x{decoder.EntryType:X8}, which is a "
@@ -111,8 +111,8 @@ public sealed class ChunkDecoderRegistry
 
         UnsupportedCodecs =
         [
-            .. ChunkEntryType.Known
-                .Where(type => !ChunkEntryType.IsStructural(type) && !_decoders.ContainsKey(type))
+            .. ChunkEntryTypeCodes.Known
+                .Where(type => !ChunkEntryTypeCodes.IsStructural(type) && !_decoders.ContainsKey(type))
                 .Select(Describe),
         ];
     }
@@ -152,12 +152,12 @@ public sealed class ChunkDecoderRegistry
     /// </summary>
     public ChunkCodecInfo Describe(uint entryType)
     {
-        bool structural = ChunkEntryType.IsStructural(entryType);
+        bool structural = ChunkEntryTypeCodes.IsStructural(entryType);
         bool supported = _decoders.TryGetValue(entryType, out IChunkDecoder? decoder);
 
         return new ChunkCodecInfo(
             entryType,
-            supported ? decoder!.Name : ChunkEntryType.NameOf(entryType),
+            supported ? decoder!.Name : ChunkEntryTypeCodes.NameOf(entryType),
             supported,
             structural);
     }
@@ -299,23 +299,23 @@ public sealed class ChunkDecoderRegistry
     /// </summary>
     private DmgError UnsupportedEntryType(uint entryType)
     {
-        if (ChunkEntryType.IsStructural(entryType))
+        if (ChunkEntryTypeCodes.IsStructural(entryType))
         {
             return DmgError.Corrupt(
-                $"A {ChunkEntryType.NameOf(entryType)} entry was handed to the decoder.",
+                $"A {ChunkEntryTypeCodes.NameOf(entryType)} entry was handed to the decoder.",
                 $"EntryType 0x{entryType:X8} carries no payload and must be skipped, not decoded.");
         }
 
         string supported = string.Join(
             ", ",
-            _supportedEntryTypes.Select(ChunkEntryType.NameOf));
+            _supportedEntryTypes.Select(ChunkEntryTypeCodes.NameOf));
 
-        return ChunkEntryType.IsRecognised(entryType)
+        return ChunkEntryTypeCodes.IsRecognised(entryType)
             ? DmgError.Unsupported(
-                $"This image uses {ChunkEntryType.NameOf(entryType)} chunks, which this build cannot decode.",
+                $"This image uses {ChunkEntryTypeCodes.NameOf(entryType)} chunks, which this build cannot decode.",
                 $"EntryType 0x{entryType:X8}. Supported chunk codecs: {supported}.")
             : DmgError.Unsupported(
-                $"This image uses a chunk type that is not in the UDIF format: {ChunkEntryType.NameOf(entryType)}.",
+                $"This image uses a chunk type that is not in the UDIF format: {ChunkEntryTypeCodes.NameOf(entryType)}.",
                 $"EntryType 0x{entryType:X8}. Either the chunk table is damaged or the "
                 + $"image was written by something newer than this build. Supported chunk codecs: {supported}.");
     }
