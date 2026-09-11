@@ -387,26 +387,4 @@ public sealed class ExtractCommand : ICliCommand
         return Result<PassphraseOptions>.Success(
             new PassphraseOptions(source, variable, arguments.Positionals));
     }
-
-    /// <summary>
-    /// Throttles progress to one line per whole percentage point, so a
-    /// multi-gigabyte image does not flood stderr with a line per megabyte.
-    /// </summary>
-    private sealed class ProgressThrottle(Dmg.Core.Diagnostics.IOutput output)
-    {
-        private int _lastPercent = -1;
-
-        public void Report(long written, long total)
-        {
-            int percent = total > 0 ? (int)(written * 100 / total) : 100;
-
-            if (percent == _lastPercent)
-            {
-                return;
-            }
-
-            _lastPercent = percent;
-            output.Progress($"{ByteSize.Format((ulong)written)} / {ByteSize.Format((ulong)total)} ({percent}%)");
-        }
-    }
 }
