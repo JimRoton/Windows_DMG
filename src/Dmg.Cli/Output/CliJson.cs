@@ -40,6 +40,7 @@ namespace Dmg.Cli.Output;
     WriteIndented = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.Never)]
 [JsonSerializable(typeof(VersionPayload))]
+[JsonSerializable(typeof(InfoPayload))]
 public sealed partial class CliJson : JsonSerializerContext
 {
     private static CliJson? _readable;
