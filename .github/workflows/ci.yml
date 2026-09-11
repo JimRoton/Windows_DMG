@@ -96,6 +96,33 @@ jobs:
       - name: Build
         run: dotnet build tests/Dmg.Core.Tests/Dmg.Core.Tests.csproj --configuration Release --no-restore
 
+      # Fixture-dependent suites (conformance, encrypted round-trip, hostile
+      # corpus) skip themselves when their inputs are absent, which lets the
+      # job go green having exercised nothing. Generating the fixtures here is
+      # what turns those suites on. macOS is required for this: hdiutil is not
+      # available on any other runner OS.
+      #
+      # Not cached: hdiutil bakes a fresh UUID into every image it writes, so
+      # a cached fixtures/generated (or a manifest.json derived from it) would
+      # go stale the moment it was reused across runs. Regenerate every time.
+      - name: Generate DMG fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/make-fixtures.sh
+
+      - name: Generate fixture manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/make-manifest.sh
+
+      - name: Generate hostile corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/make-hostile-corpus.py
+
       - name: Test Dmg.Core.Tests
         shell: bash
         run: |
