@@ -73,17 +73,20 @@ public sealed class DmgBlockStream : Stream
     /// </remarks>
     public const long MaxCompressedChunkBytes = 64L * 1024 * 1024;
 
+    /// <summary>
+    /// The chunk cache's byte budget when a caller does not choose one. Chosen to
+    /// hold a comfortable run of decoded chunks - enough that ordinary sequential
+    /// or lightly-backtracking access rarely re-decodes - without holding an
+    /// entire large disk in memory.
+    /// </summary>
+    public const long DefaultCacheCapacityBytes = 64L * 1024 * 1024;
+
     private readonly Stream _source;
     private readonly bool _leaveOpen;
     private readonly ChunkDecoderRegistry _registry;
     private readonly Extent[] _extents;
     private readonly ulong[] _extentStarts;
-
-    // S5.1 keeps exactly one decoded chunk alive: enough that a read spanning a
-    // chunk boundary does not decode the same chunk twice, and no more. The real
-    // cache is S5.2.
-    private byte[]? _decoded;
-    private int _decodedOrdinal = -1;
+    private readonly ChunkCache _cache;
 
     private long _position;
     private bool _disposed;
@@ -92,11 +95,13 @@ public sealed class DmgBlockStream : Stream
         Stream source,
         bool leaveOpen,
         DmgImage image,
-        ChunkDecoderRegistry registry)
+        ChunkDecoderRegistry registry,
+        ChunkCache cache)
     {
         _source = source;
         _leaveOpen = leaveOpen;
         _registry = registry;
+        _cache = cache;
         Image = image;
 
         // A flat copy of the extents, and their start sectors alongside. The index
@@ -159,17 +164,27 @@ public sealed class DmgBlockStream : Stream
     /// The codecs to decode with. Defaults to <see cref="ChunkDecoderRegistry.Default"/>;
     /// tests substitute their own.
     /// </param>
+    /// <param name="cacheCapacityBytes">
+    /// The most decoded bytes the chunk cache may hold at once. Defaults to
+    /// <see cref="DefaultCacheCapacityBytes"/>; zero disables caching without
+    /// disabling the stream - S5.2 requires reads to come out identical either
+    /// way, only slower at zero.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="cacheCapacityBytes"/> is negative.
+    /// </exception>
     public static Result<DmgBlockStream> Open(
         Stream source,
         bool leaveOpen = false,
-        ChunkDecoderRegistry? registry = null)
+        ChunkDecoderRegistry? registry = null,
+        long cacheCapacityBytes = DefaultCacheCapacityBytes)
     {
         ArgumentNullException.ThrowIfNull(source);
 
         Result<DmgImage> opened = DmgImage.Open(source);
 
         return opened.TryGetValue(out DmgImage? image)
-            ? Create(source, image, leaveOpen, registry)
+            ? Create(source, image, leaveOpen, registry, cacheCapacityBytes)
             : opened.CastFailure<DmgBlockStream>();
     }
 
@@ -181,14 +196,23 @@ public sealed class DmgBlockStream : Stream
     /// <param name="image">The parsed container.</param>
     /// <param name="leaveOpen">True to leave <paramref name="source"/> open on dispose.</param>
     /// <param name="registry">The codecs to decode with.</param>
+    /// <param name="cacheCapacityBytes">
+    /// The most decoded bytes the chunk cache may hold at once. See
+    /// <see cref="Open"/> for the zero-disables-caching contract.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="cacheCapacityBytes"/> is negative.
+    /// </exception>
     public static Result<DmgBlockStream> Create(
         Stream source,
         DmgImage image,
         bool leaveOpen = false,
-        ChunkDecoderRegistry? registry = null)
+        ChunkDecoderRegistry? registry = null,
+        long cacheCapacityBytes = DefaultCacheCapacityBytes)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(image);
+        ArgumentOutOfRangeException.ThrowIfNegative(cacheCapacityBytes);
 
         if (!source.CanRead || !source.CanSeek)
         {
@@ -201,7 +225,8 @@ public sealed class DmgBlockStream : Stream
             source,
             leaveOpen,
             image,
-            registry ?? ChunkDecoderRegistry.Default));
+            registry ?? ChunkDecoderRegistry.Default,
+            new ChunkCache(cacheCapacityBytes)));
     }
 
     /// <summary>
@@ -372,8 +397,6 @@ public sealed class DmgBlockStream : Stream
         if (!_disposed)
         {
             _disposed = true;
-            _decoded = null;
-            _decodedOrdinal = -1;
 
             if (disposing && !_leaveOpen)
             {
@@ -452,20 +475,18 @@ public sealed class DmgBlockStream : Stream
     }
 
     /// <summary>
-    /// The fully decoded bytes of one stored chunk, decoding it if the last read
-    /// did not already.
+    /// The fully decoded bytes of one stored chunk - from the cache if S5.2
+    /// already put it there, decoded fresh otherwise.
     /// </summary>
     private byte[] DecodedChunk(int ordinal, Extent extent)
     {
-        if (_decodedOrdinal == ordinal && _decoded is not null)
+        if (_cache.TryGet(ordinal, out byte[] cached))
         {
-            return _decoded;
+            return cached;
         }
 
         byte[] decoded = Decode(extent);
-
-        _decoded = decoded;
-        _decodedOrdinal = ordinal;
+        _cache.Set(ordinal, decoded);
 
         return decoded;
     }
