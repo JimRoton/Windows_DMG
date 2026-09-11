@@ -93,14 +93,10 @@ public sealed class CodecConformanceTests
     /// Says out loud what the suite is working with, so a passing run cannot be
     /// mistaken for a thorough one when the corpus is absent or partial.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void TheCorpusIsReported()
     {
-        if (!FixtureCorpus.IsAvailable)
-        {
-            _output.WriteLine($"SKIPPED - no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
-            return;
-        }
+        Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
         _output.WriteLine($"Corpus: {FixtureCorpus.FixtureDirectory}");
 
@@ -133,14 +129,11 @@ public sealed class CodecConformanceTests
     /// routing reads the chunk table rather than the fixture's name, so a corpus
     /// that grows a new unsupported-codec fixture is handled without editing this.
     /// </remarks>
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(Corpus))]
     public void DecodesToApplesOwnOutput(string fixtureName)
     {
-        if (!TryGetRunnable(fixtureName, out FixtureRecord? record))
-        {
-            return;
-        }
+        FixtureRecord record = GetRunnable(fixtureName);
 
         if (IsFlat(record))
         {
@@ -191,13 +184,10 @@ public sealed class CodecConformanceTests
     /// bzip2 is refused, not decoded - and the refusal says "bzip2" so the user
     /// learns why their image will not open instead of reading a hex number.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Bzip2IsRefusedAndNamed()
     {
-        if (!TryGetRunnable(Bzip2Fixture, out FixtureRecord? record))
-        {
-            return;
-        }
+        FixtureRecord record = GetRunnable(Bzip2Fixture);
 
         Result<IReadOnlyList<uint>> survey = UdifImageDecoder.SurveyEntryTypes(record.Path);
 
@@ -231,14 +221,10 @@ public sealed class CodecConformanceTests
     /// visible in the test output and this test starts failing usefully the day the
     /// wrapper lands.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void EncryptedFixturesAreSkippedUntilTheEncryptionEpic()
     {
-        if (!FixtureCorpus.IsAvailable)
-        {
-            _output.WriteLine($"SKIPPED - no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
-            return;
-        }
+        Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
         FixtureRecord[] encrypted = [.. FixtureCorpus.Records.Where(record => record.Encrypted)];
 
@@ -269,27 +255,20 @@ public sealed class CodecConformanceTests
     /// not they are encrypted. The value changes every time the corpus is rebuilt;
     /// the grouping does not, which is why the grouping is what gets asserted.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void SevenFixturesDecodeToOneSharedStream()
     {
-        if (!FixtureCorpus.IsAvailable)
-        {
-            _output.WriteLine($"SKIPPED - no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
-            return;
-        }
+        Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
         string[] missing =
         [
             .. SharedSourceFixtures.Where(name => FixtureCorpus.Find(name) is null),
         ];
 
-        if (missing.Length > 0)
-        {
-            _output.WriteLine(
-                $"SKIPPED - the shared-source group is incomplete: {string.Join(", ", missing)} "
-                + $"absent. {FixtureCorpus.Regenerate}");
-            return;
-        }
+        Skip.If(
+            missing.Length > 0,
+            $"the shared-source group is incomplete: {string.Join(", ", missing)} absent. "
+            + FixtureCorpus.Regenerate);
 
         List<IGrouping<string, FixtureRecord>> shared =
         [
@@ -369,25 +348,18 @@ public sealed class CodecConformanceTests
     /// covered fails this test instead of being quietly excused by a list.
     /// </para>
     /// </remarks>
-    [Fact]
+    [SkippableFact]
     public void EveryDecoderTheCorpusCanReachIsExercised()
     {
-        if (!FixtureCorpus.IsAvailable)
-        {
-            _output.WriteLine($"SKIPPED - no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
-            return;
-        }
+        Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
-        if (FixtureCorpus.Unusable.Count > 0)
-        {
-            // Coverage is a statement about the whole corpus, so a partial one
-            // cannot support it either way: the missing fixture may well be the one
-            // that carried the codec.
-            _output.WriteLine(
-                "SKIPPED - the corpus is incomplete, so codec coverage cannot be judged: "
-                + string.Join(" ", FixtureCorpus.Unusable));
-            return;
-        }
+        // Coverage is a statement about the whole corpus, so a partial one cannot
+        // support it either way: the missing fixture may well be the one that
+        // carried the codec.
+        Skip.If(
+            FixtureCorpus.Unusable.Count > 0,
+            "the corpus is incomplete, so codec coverage cannot be judged: "
+            + string.Join(" ", FixtureCorpus.Unusable));
 
         Dictionary<uint, List<string>> coverage = [];
 
@@ -461,14 +433,10 @@ public sealed class CodecConformanceTests
     /// wrote the images.
     /// </para>
     /// </remarks>
-    [Fact]
+    [SkippableFact]
     public void RawAndZeroFillAreVerifiedAgainstAppleGroundTruth()
     {
-        if (!FixtureCorpus.IsAvailable)
-        {
-            _output.WriteLine($"SKIPPED - no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
-            return;
-        }
+        Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
         AssertCarriesAndMatches(RawChunkFixture, ChunkEntryType.Raw);
         AssertCarriesAndMatches(ZeroFillFixture, ChunkEntryType.ZeroFill);
@@ -533,37 +501,34 @@ public sealed class CodecConformanceTests
 
     /// <summary>
     /// Reports and steps over the rows a theory cannot run: the no-corpus sentinel,
-    /// and the encrypted fixtures. Returns true when there is real work to do.
+    /// and the encrypted fixtures. Throws <see cref="SkipException"/> - reported by
+    /// the test runner as skipped, not passed - for every row that verifies
+    /// nothing; returns the runnable record otherwise.
     /// </summary>
-    private bool TryGetRunnable(string fixtureName, out FixtureRecord record)
+    private static FixtureRecord GetRunnable(string fixtureName)
     {
-        record = null!;
-
         if (string.Equals(fixtureName, FixtureCorpus.NoCorpusCase, StringComparison.Ordinal)
             || !FixtureCorpus.IsAvailable)
         {
-            _output.WriteLine($"SKIPPED - no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
-            return false;
+            throw new SkipException(
+                $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
         }
 
         FixtureRecord? found = FixtureCorpus.Find(fixtureName);
 
         if (found is null)
         {
-            _output.WriteLine($"SKIPPED {fixtureName}: not in this run's manifest.");
-            return false;
+            throw new SkipException($"{fixtureName}: not in this run's manifest.");
         }
 
         if (found.Encrypted)
         {
-            _output.WriteLine(
-                $"SKIPPED {fixtureName}: encrypted. Decoding it needs the encrcdsa layer from "
-                + "epic E4, which is not built. See EncryptedFixturesAreSkippedUntilTheEncryptionEpic.");
-            return false;
+            throw new SkipException(
+                $"{fixtureName}: encrypted. Decoding it needs the encrcdsa layer from epic E4, "
+                + "which is not built. See EncryptedFixturesAreSkippedUntilTheEncryptionEpic.");
         }
 
-        record = found;
-        return true;
+        return found;
     }
 
     private void AssertRefusedByName(FixtureRecord record, IReadOnlyList<ChunkCodecInfo> codecs)

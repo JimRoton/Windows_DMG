@@ -80,13 +80,10 @@ public sealed class HostileCorpusTests
 
     public static TheoryData<string> Corpus => HostileCorpus.Names();
 
-    [Fact]
+    [SkippableFact]
     public void TheHostileCorpusIsReported()
     {
-        if (!Available())
-        {
-            return;
-        }
+        EnsureAvailable();
 
         _output.WriteLine($"Hostile corpus: {HostileCorpus.Directory}");
         foreach (HostileCase item in HostileCorpus.Cases)
@@ -104,13 +101,10 @@ public sealed class HostileCorpusTests
         Assert.Empty(HostileCorpus.Unusable);
     }
 
-    [Fact]
+    [SkippableFact]
     public void TheCorpusReachesEveryStructuralBoundary()
     {
-        if (!Available())
-        {
-            return;
-        }
+        EnsureAvailable();
 
         string[] present = [.. HostileCorpus.Cases.Select(item => item.Boundary).Distinct().Order()];
         _output.WriteLine($"Boundaries covered: {string.Join(", ", present)}");
@@ -130,14 +124,11 @@ public sealed class HostileCorpusTests
     /// The contract. One malformed image in, one named refusal out, inside both
     /// bounds, with nothing thrown.
     /// </summary>
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(Corpus))]
     public void EveryHostileImageIsRefusedCleanly(string caseName)
     {
-        if (!TryGetCase(caseName, out HostileCase? item))
-        {
-            return;
-        }
+        HostileCase item = GetCase(caseName);
 
         HostileOutcome outcome = HostileRunner.Run(
             () => UdifImageDecoder.Decode(item.Path).Discard(),
@@ -172,14 +163,11 @@ public sealed class HostileCorpusTests
     /// container is not the same as being able to read it - but it may never
     /// throw, hang, or answer <see cref="DmgExitCode.InternalError"/>.
     /// </summary>
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(Corpus))]
     public void TheProbeChainSurvivesEveryHostileImage(string caseName)
     {
-        if (!TryGetCase(caseName, out HostileCase? item))
-        {
-            return;
-        }
+        HostileCase item = GetCase(caseName);
 
         HostileOutcome outcome = HostileRunner.Run(
             () => ImageFormatProbeChain.Default.Identify(item.Path).Discard(),
@@ -224,13 +212,10 @@ public sealed class HostileCorpusTests
     /// refused outright, and this test exists to prove that refusal is real and
     /// happens before any expansion, not that it was intended.
     /// </remarks>
-    [Fact]
+    [SkippableFact]
     public void BillionLaughsFailsClosedOnTheDoctype()
     {
-        if (!TryGetCase("plist-billion-laughs.dmg", out HostileCase? item))
-        {
-            return;
-        }
+        HostileCase item = GetCase("plist-billion-laughs.dmg");
 
         HostileOutcome outcome = HostileRunner.Run(
             () => UdifImageDecoder.Decode(item.Path).Discard(),
@@ -255,9 +240,15 @@ public sealed class HostileCorpusTests
             + $"{outcome.AllocatedMib}: {error}");
 
         // And the sibling case proves the refusal is on the doctype and not on
-        // the nesting depth that billion-laughs happens to also have.
-        if (!TryGetCase("plist-quadratic-blowup.dmg", out HostileCase? quadratic))
+        // the nesting depth that billion-laughs happens to also have. This lookup
+        // is deliberately non-throwing: the assertions above already verified
+        // something real, so an absent corroborating fixture degrades the test
+        // rather than making the whole thing retroactively vacuous.
+        if (!TryFindCase("plist-quadratic-blowup.dmg", out HostileCase quadratic))
         {
+            _output.WriteLine(
+                "The corroborating quadratic-blowup case is not in this run's corpus; "
+                + "the doctype refusal above was still verified.");
             return;
         }
 
@@ -277,22 +268,16 @@ public sealed class HostileCorpusTests
     /// while being useless, so the unmutated source the corpus was cut from has to
     /// still read.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void TheUnmutatedSourceStillReads()
     {
-        if (!Available())
-        {
-            return;
-        }
+        EnsureAvailable();
 
         string source = System.IO.Path.Combine(
             HostileCorpus.Directory, "..", "generated", "exfat-zlib.dmg");
-        if (!File.Exists(source))
-        {
-            _output.WriteLine(
-                $"SKIPPED - the source fixture is not on disk. {HostileCorpus.Regenerate}");
-            return;
-        }
+        Skip.If(
+            !File.Exists(source),
+            $"the source fixture is not on disk. {HostileCorpus.Regenerate}");
 
         Result<DecodedImage> decoded = UdifImageDecoder.Decode(source);
         Assert.True(
@@ -338,31 +323,51 @@ public sealed class HostileCorpusTests
             + $"{item.MaxManagedMib} MiB ceiling this case sets. {item.Mutation} {item.Why}");
     }
 
-    private bool Available()
-    {
-        if (HostileCorpus.IsAvailable)
-        {
-            return true;
-        }
+    /// <summary>
+    /// Skips the running test - reported by the runner as skipped, not passed -
+    /// when the corpus is not on disk at all.
+    /// </summary>
+    private static void EnsureAvailable() =>
+        Skip.If(!HostileCorpus.IsAvailable, $"no hostile corpus: {HostileCorpus.UnavailableReason}");
 
-        _output.WriteLine($"SKIPPED - no hostile corpus: {HostileCorpus.UnavailableReason}");
-        return false;
-    }
-
-    private bool TryGetCase(string caseName, out HostileCase item)
+    /// <summary>
+    /// The gate for a case that is the whole point of the test: the no-corpus
+    /// sentinel and an unresolvable name both mean the test would otherwise verify
+    /// nothing, so both throw <see cref="SkipException"/> rather than returning.
+    /// </summary>
+    private static HostileCase GetCase(string caseName)
     {
-        item = null!;
         if (string.Equals(caseName, HostileCorpus.NoCorpusCase, StringComparison.Ordinal)
             || !HostileCorpus.IsAvailable)
         {
-            _output.WriteLine($"SKIPPED - no hostile corpus: {HostileCorpus.UnavailableReason}");
+            throw new SkipException($"no hostile corpus: {HostileCorpus.UnavailableReason}");
+        }
+
+        HostileCase? found = HostileCorpus.Find(caseName);
+        if (found is null)
+        {
+            throw new SkipException($"{caseName}: not in this run's cases.json.");
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// A non-throwing lookup for a corroborating fixture inside a test that has
+    /// already performed real verification before checking for it - unlike
+    /// <see cref="GetCase"/>, its absence does not make the test vacuous.
+    /// </summary>
+    private static bool TryFindCase(string caseName, out HostileCase item)
+    {
+        item = null!;
+        if (!HostileCorpus.IsAvailable)
+        {
             return false;
         }
 
         HostileCase? found = HostileCorpus.Find(caseName);
         if (found is null)
         {
-            _output.WriteLine($"SKIPPED {caseName}: not in this run's cases.json.");
             return false;
         }
 
