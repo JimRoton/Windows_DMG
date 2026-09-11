@@ -26,6 +26,8 @@ internal sealed class FakeMountVirtualDiskService : IVirtualDiskService
 
     public DmgError? AttachFailure { get; set; }
 
+    public DmgError? DetachFailure { get; set; }
+
     public string PhysicalPath { get; set; } = @"\\.\PhysicalDrive9";
 
     public IReadOnlyList<string> Calls => _calls;
@@ -65,7 +67,7 @@ internal sealed class FakeMountVirtualDiskService : IVirtualDiskService
     {
         _calls.Add("Detach()");
 
-        return Result.Success();
+        return DetachFailure is null ? Result.Success() : Result.Failure(DetachFailure);
     }
 
     public Result<string> GetPhysicalPath(IVirtualDiskHandle handle) => Result<string>.Success(PhysicalPath);
