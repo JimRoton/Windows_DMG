@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dmg.Core;
 using Dmg.Core.Diagnostics;
+using Dmg.Windows.VirtualDisk;
 
 namespace Dmg.Windows.Mounts;
 
@@ -187,6 +188,89 @@ public sealed class MountRegistry
         }
 
         return Validated(document.Mounts ?? []);
+    }
+
+    /// <summary>
+    /// <see cref="Read()"/>, then drops every entry whose disk is no longer
+    /// actually attached (S8.8) - what a reboot leaves behind, since Windows does
+    /// not remember an attached virtual disk across a restart, and what
+    /// <c>dmg list</c> and <c>dmg unmount</c> should both look through rather than
+    /// the raw file.
+    /// </summary>
+    /// <param name="virtualDiskService">
+    /// Asked, per entry, whether its disk is still attached. A disk this cannot
+    /// even open counts as gone, the same as one that opens but reports itself
+    /// detached - both mean there is nothing left to show the user.
+    /// </param>
+    /// <remarks>
+    /// Silent unless the output sink is at <see cref="Verbosity.Verbose"/>: pruning
+    /// a ghost is the expected outcome of an ordinary reboot, not something worth a
+    /// warning every time. Persisting the prune is best-effort - if the write loses
+    /// a race with another writer, the next call reconciles again, so nothing here
+    /// can leave a ghost stuck forever.
+    /// </remarks>
+    public IReadOnlyList<MountRecord> Read(IVirtualDiskService virtualDiskService)
+    {
+        ArgumentNullException.ThrowIfNull(virtualDiskService);
+
+        IReadOnlyList<MountRecord> records = Read();
+
+        if (records.Count == 0)
+        {
+            return records;
+        }
+
+        List<MountRecord> attached = new(records.Count);
+        List<MountRecord> ghosts = [];
+
+        foreach (MountRecord record in records)
+        {
+            (IsStillAttached(virtualDiskService, record) ? attached : ghosts).Add(record);
+        }
+
+        if (ghosts.Count == 0)
+        {
+            return attached;
+        }
+
+        foreach (MountRecord ghost in ghosts)
+        {
+            _output?.Trace(
+                $"Dropped mount '{ghost.Id}' ({ghost.SourcePath}) from the registry: its disk "
+                + "is no longer attached.");
+        }
+
+        Result persisted = Replace(attached);
+
+        if (!persisted.Ok)
+        {
+            _output?.Trace(
+                $"Could not persist mount registry reconciliation: {persisted.Error.Message}");
+        }
+
+        return attached;
+    }
+
+    /// <summary>
+    /// Asks whether one record's disk is still attached. Opened read-only
+    /// regardless of the record's own mode - this is only asking "is it there?",
+    /// not asking to write to it, and a disk that has since become write-protected
+    /// should not read as gone because of that.
+    /// </summary>
+    private static bool IsStillAttached(IVirtualDiskService virtualDiskService, MountRecord record)
+    {
+        Result<IVirtualDiskHandle> opened =
+            virtualDiskService.Open(record.VhdPath, VirtualDiskAccessMode.ReadOnly);
+
+        if (!opened.TryGetValue(out IVirtualDiskHandle? handle))
+        {
+            return false;
+        }
+
+        using (handle)
+        {
+            return virtualDiskService.GetPhysicalPath(handle).Ok;
+        }
     }
 
     /// <summary>

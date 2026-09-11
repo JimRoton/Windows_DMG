@@ -18,6 +18,7 @@ public sealed class RecordingOutput : IOutput
     private readonly List<string> _warnings = [];
     private readonly List<string> _errors = [];
     private readonly List<string> _lines = [];
+    private readonly List<string> _traces = [];
 
     /// <summary>Everything passed to <see cref="Warning"/>.</summary>
     public IReadOnlyList<string> Warnings => _warnings;
@@ -28,6 +29,13 @@ public sealed class RecordingOutput : IOutput
     /// <summary>Everything written to stdout.</summary>
     public IReadOnlyList<string> Lines => _lines;
 
+    /// <summary>
+    /// Everything passed to <see cref="Trace"/>. Kept, unlike the real
+    /// verbosity-gated sinks, so a test can assert something was said at verbose
+    /// level without the recorder itself needing to model <see cref="Verbosity"/>.
+    /// </summary>
+    public IReadOnlyList<string> Traces => _traces;
+
     /// <inheritdoc />
     public Verbosity Verbosity => Verbosity.Normal;
 
@@ -37,6 +45,10 @@ public sealed class RecordingOutput : IOutput
     /// <summary>True when any warning mentions <paramref name="fragment"/>.</summary>
     public bool WarnedAbout(string fragment) =>
         _warnings.Exists(warning => warning.Contains(fragment, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>True when any trace mentions <paramref name="fragment"/>.</summary>
+    public bool TracedAbout(string fragment) =>
+        _traces.Exists(trace => trace.Contains(fragment, StringComparison.OrdinalIgnoreCase));
 
     /// <inheritdoc />
     public void WriteLine(string message) => _lines.Add(message);
@@ -53,9 +65,7 @@ public sealed class RecordingOutput : IOutput
     public void Warning(string message) => _warnings.Add(message);
 
     /// <inheritdoc />
-    public void Trace(string message)
-    {
-    }
+    public void Trace(string message) => _traces.Add(message);
 
     /// <inheritdoc />
     public void Error(string message) => _errors.Add(message);
