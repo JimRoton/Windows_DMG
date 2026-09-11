@@ -41,6 +41,8 @@ full recipe list). Copy the ones this plan uses to the Windows machine:
 | `exfat-zlib.dmg` | exFAT mount, read/copy, `--rw`, `--letter` |
 | `fat32.dmg` | FAT32 mount |
 | `exfat-enc256.dmg` / `exfat-enc128.dmg` | Encrypted mount, wrong passphrase |
+| `exfat-enc-udzo.dmg` | Encrypted **and** compressed — decrypt then inflate (§5) |
+| `exfat-sparse.dmg` | Dynamic VHD size comparison (§10) |
 | `hfsplus.dmg` | HFS+ refusal (exit 5) |
 
 The passphrase for every encrypted fixture is `dmg-test-passphrase`.
@@ -217,24 +219,62 @@ dmg list
       it's fine for the entry to still be in that file as long as `list`
       doesn't report it as live.)
 
-## 10. Dynamic VHD
+## 10. Dynamic VHD and `--cache`
 
-**Not currently reachable from the CLI.** `dmg mount` and `dmg extract
---format vhd` both always write a *fixed* VHD (`VhdWriteOptions.Default` has
-`DiskType = Fixed`, and neither command exposes a flag to change it) — see
-`src/Dmg.Cli/Commands/MountCommand.cs` and `ExtractCommand.cs`. The dynamic
-VHD writer itself exists and is unit-tested in `Dmg.Core` (`VhdWriter`,
-`VhdDynamicHeader`, `VhdDynamicLayout`), but no story has wired it to a verb
-yet.
+S9.12 wired the dynamic VHD writer to the CLI. `mount`, `extract` and `verify`
+all now take `--cache MB`; `mount` and `extract` also take `--dynamic`, which
+writes the scratch VHD as an allocate-on-demand disk instead of a fixed one.
+A mostly-empty volume is where that shows: `exfat-sparse.dmg` is a 48 MiB
+volume holding one small file.
 
-- [ ] Confirm this is still true against the build under test — run `dmg help
-      mount` and `dmg help extract` and check neither lists a
-      `--dynamic`/`--sparse`/similar option.
-- [ ] If a flag has since been added, replace this item with: mount or extract
-      with it, and check the resulting `.vhd` is smaller than the fixed
-      equivalent for a mostly-empty volume (`exfat-sparse.dmg` is a good
-      source for that comparison), and that Windows still mounts it
-      correctly.
+```
+dmg help mount
+dmg help extract
+```
+
+- [ ] Both list `--dynamic` and `--cache`. (If they don't, the build under
+      test predates S9.12.)
+
+```
+dmg extract exfat-sparse.dmg sparse-fixed.vhd
+dmg extract exfat-sparse.dmg sparse-dyn.vhd --dynamic
+```
+
+- [ ] Both exit 0.
+- [ ] `sparse-dyn.vhd` is substantially smaller **on disk** than
+      `sparse-fixed.vhd`. `dir` reports the logical size, which may look
+      identical — check "Size on disk" in the file's Properties dialog.
+
+**This next item is the highest-risk check in the whole plan: no dynamic VHD
+this tool writes has ever been attached by Windows.** Elevated:
+
+```
+Mount-DiskImage -ImagePath <full path to sparse-dyn.vhd>
+```
+
+- [ ] Windows accepts the disk and assigns a volume. Its files match §1's
+      table.
+- [ ] `Dismount-DiskImage -ImagePath <same path>` afterwards, exit 0.
+- [ ] If Windows rejects it, capture the exact error — that points at the
+      dynamic VHD header/BAT geometry, not at the DMG decode.
+
+```
+dmg mount exfat-sparse.dmg --dynamic
+dmg unmount <letter>
+```
+
+- [ ] Mounts, assigns a letter, files readable, unmounts cleanly.
+
+```
+dmg mount exfat-zlib.dmg --cache 8
+dmg verify exfat-zlib.dmg --cache 1
+dmg extract exfat-zlib.dmg out.raw --format raw --dynamic
+```
+
+- [ ] The first two exit 0 — `--cache` changes performance only, never output.
+- [ ] The third exits **2**: `--dynamic` with `--format raw` is a usage error,
+      because a raw image has no dynamic form. It must say so rather than
+      silently ignoring the flag.
 
 ## Reporting a failure
 

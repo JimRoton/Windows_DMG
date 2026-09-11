@@ -25,7 +25,7 @@ namespace Dmg.Core.Tests.Codecs;
 /// this is a live differential test, not a recorded-value regression test. What is
 /// asserted about hashes is only ever a relationship between them: equality with
 /// what hdiutil said, and the grouping described in
-/// <see cref="SevenFixturesDecodeToOneSharedStream"/>. See
+/// <see cref="EightFixturesDecodeToOneSharedStream"/>. See
 /// <see cref="FixtureCorpus"/> for the drift check that keeps a stale manifest from
 /// being believed.
 /// </para>
@@ -43,7 +43,7 @@ public sealed class CodecConformanceTests
     private const string Bzip2Fixture = "bzip2.dmg";
 
     /// <summary>
-    /// The seven fixtures hdiutil converts from one shared 12 MiB exFAT source
+    /// The eight fixtures hdiutil converts from one shared 12 MiB exFAT source
     /// image. Their decoded sector streams are identical by construction, whatever
     /// the codec or the encryption wrapper on the outside - which is what makes the
     /// grouping assertion below reproducible even though the hash itself is not.
@@ -52,6 +52,7 @@ public sealed class CodecConformanceTests
     [
         "adc.dmg",
         "bzip2.dmg",
+        "exfat-enc-udzo.dmg",
         "exfat-enc128.dmg",
         "exfat-enc256.dmg",
         "exfat-raw.dmg",
@@ -250,13 +251,13 @@ public sealed class CodecConformanceTests
 
     /// <summary>
     /// The one thing about these hashes that is reproducible across regenerations:
-    /// seven fixtures come from a single source image, so their decoded sector
+    /// eight fixtures come from a single source image, so their decoded sector
     /// streams are byte-identical to each other - whatever the codec, and whether or
     /// not they are encrypted. The value changes every time the corpus is rebuilt;
     /// the grouping does not, which is why the grouping is what gets asserted.
     /// </summary>
     [SkippableFact]
-    public void SevenFixturesDecodeToOneSharedStream()
+    public void EightFixturesDecodeToOneSharedStream()
     {
         Skip.If(!FixtureCorpus.IsAvailable, $"no usable fixture corpus: {FixtureCorpus.UnavailableReason}");
 
