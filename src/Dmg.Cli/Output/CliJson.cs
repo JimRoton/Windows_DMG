@@ -41,6 +41,7 @@ namespace Dmg.Cli.Output;
     DefaultIgnoreCondition = JsonIgnoreCondition.Never)]
 [JsonSerializable(typeof(VersionPayload))]
 [JsonSerializable(typeof(InfoPayload))]
+[JsonSerializable(typeof(MountPayload))]
 public sealed partial class CliJson : JsonSerializerContext
 {
     private static CliJson? _readable;
