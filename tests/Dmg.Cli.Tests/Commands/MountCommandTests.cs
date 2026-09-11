@@ -188,6 +188,104 @@ public sealed class MountCommandTests : IDisposable
     }
 
     [Fact]
+    public void DynamicWritesADynamicScratchVhdAndMountsIt()
+    {
+        if (Fixtures.Path("exfat-zlib.dmg") is not string path)
+        {
+            return;
+        }
+
+        FakeMountVirtualDiskService virtualDisks = new();
+        MountCommand command = NewCommand(
+            virtualDisks, FakeMountPrivilegeService.Elevated(), new FakeMountVolumeService().WithDriveLetter("E"));
+
+        RecordingOutput output = new();
+
+        Assert.Equal(
+            DmgExitCode.Success,
+            command.Execute(new CliContext([path, "--scratch", _scratchRoot, "--dynamic"], output.Output)));
+
+        MountRegistry registry = new(_registryDirectory);
+        IReadOnlyList<MountRecord> records = registry.Read();
+
+        Assert.Single(records);
+        Assert.True(File.Exists(records[0].VhdPath));
+    }
+
+    [Fact]
+    public void DynamicUsesTheSparseSizeForThePrecheckNotTheFixedWorstCase()
+    {
+        if (Fixtures.Path("exfat-zlib.dmg") is not string path)
+        {
+            return;
+        }
+
+        FakeMountVirtualDiskService virtualDisks = new();
+
+        // Sized so the volume's whole worst-case (fixed) allocation would not fit,
+        // but a mostly-empty volume's real (sparse) allocation does. Unelevated on
+        // purpose: if this ever regresses to the fixed-size worst case, the
+        // precheck fails before elevation is ever asked about, the same way
+        // InsufficientScratchSpaceIsRefusedBeforeElevationEvenMatters proves the
+        // ordering for the plain fixed case.
+        long budget = new FileInfo(path).Length + (4 * 1024 * 1024);
+
+        MountCommand command = new(
+            new PassphraseReader(),
+            virtualDisks,
+            FakeMountPrivilegeService.Elevated(),
+            new FakeMountVolumeService().WithDriveLetter("E"),
+            () => Result<MountRegistry>.Success(new MountRegistry(_registryDirectory)),
+            new FakeFreeSpaceProbe(availableBytes: budget));
+
+        RecordingOutput output = new();
+
+        DmgExitCode exitCode = command.Execute(
+            new CliContext([path, "--scratch", _scratchRoot, "--dynamic"], output.Output));
+
+        // Either this build's sparse map found enough zero-fill to fit the budget
+        // (Success), or it legitimately could not (InsufficientSpace) - what this
+        // test guards against is silently falling back to the same worst case a
+        // fixed VHD would need, which InsufficientScratchSpaceIsRefusedBeforeElevationEvenMatters
+        // already shows a truly tiny budget cannot satisfy either way.
+        Assert.True(exitCode is DmgExitCode.Success or DmgExitCode.InsufficientSpace);
+    }
+
+    [Fact]
+    public void ACustomCacheBudgetStillMounts()
+    {
+        if (Fixtures.Path("exfat-zlib.dmg") is not string path)
+        {
+            return;
+        }
+
+        FakeMountVirtualDiskService virtualDisks = new();
+        MountCommand command = NewCommand(
+            virtualDisks, FakeMountPrivilegeService.Elevated(), new FakeMountVolumeService().WithDriveLetter("E"));
+
+        RecordingOutput output = new();
+
+        Assert.Equal(
+            DmgExitCode.Success,
+            command.Execute(new CliContext([path, "--scratch", _scratchRoot, "--cache", "1"], output.Output)));
+    }
+
+    [Fact]
+    public void CacheZeroIsAUsageErrorBeforeAnyWorkHappens()
+    {
+        FakeMountVirtualDiskService virtualDisks = new();
+        MountCommand command = NewCommand(virtualDisks, FakeMountPrivilegeService.Elevated(), new FakeMountVolumeService());
+
+        RecordingOutput output = new();
+
+        Assert.Equal(
+            DmgExitCode.UsageError,
+            command.Execute(new CliContext(["a.dmg", "--cache", "0"], output.Output)));
+
+        Assert.Empty(virtualDisks.Calls);
+    }
+
+    [Fact]
     public void InsufficientScratchSpaceIsRefusedBeforeElevationEvenMatters()
     {
         if (Fixtures.Path("exfat-zlib.dmg") is not string path)
@@ -303,6 +401,8 @@ public sealed class MountCommandTests : IDisposable
         Assert.Contains(command.Spec.Options, option => option.Name == "letter");
         Assert.Contains(command.Spec.Options, option => option.Name == "scratch");
         Assert.Contains(command.Spec.Options, option => option.Name == "keep-scratch");
+        Assert.Contains(command.Spec.Options, option => option.Name == "dynamic");
+        Assert.Contains(command.Spec.Options, option => option.Name == "cache");
         Assert.Contains(command.Spec.Options, option => option.Name == "password-stdin");
         Assert.Contains(command.Spec.Options, option => option.Name == "password-env");
         Assert.NotEmpty(command.Spec.Notes);

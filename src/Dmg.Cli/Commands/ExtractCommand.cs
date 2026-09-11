@@ -70,6 +70,10 @@ public sealed class ExtractCommand : ICliCommand
                 "force",
                 "Overwrite OUTPUT if it already exists."),
             new OptionSpec(
+                "dynamic",
+                "With --format vhd, write a dynamic VHD instead of the default fixed one."),
+            CacheOption.Spec,
+            new OptionSpec(
                 "password-stdin",
                 "Read the passphrase for an encrypted image from stdin."),
             new OptionSpec(
@@ -84,6 +88,8 @@ public sealed class ExtractCommand : ICliCommand
             + "all this verb does, so none of that stops it.",
             "'vhd', the default, is a fixed VHD - the same bytes dmg mount would attach. 'raw' is "
             + "the decoded sectors with no container, for a caller that wants to dd them elsewhere.",
+            "--dynamic writes an allocate-on-demand VHD instead: the same volume for a fraction of "
+            + "the scratch space when it is mostly empty. Only meaningful with --format vhd.",
             "Refuses to overwrite an existing OUTPUT unless --force is given, and deletes a "
             + "partially written OUTPUT on any failure - a file of the right name is not something "
             + "this verb leaves lying around half done.",
@@ -136,6 +142,26 @@ public sealed class ExtractCommand : ICliCommand
             return DmgExitCode.UsageError;
         }
 
+        bool dynamic = arguments.Has("dynamic");
+
+        if (dynamic && extractFormat != ExtractFormat.Vhd)
+        {
+            context.Output.Error(DmgError.Usage(
+                "--dynamic only makes sense with --format vhd.",
+                "'raw' has no VHD structure for 'dynamic' to change."));
+
+            return DmgExitCode.UsageError;
+        }
+
+        Result<long?> cache = CacheOption.BytesFor(arguments);
+
+        if (!cache.TryGetValue(out long? cacheCapacityBytes))
+        {
+            context.Output.Error(cache.Error);
+
+            return cache.Error.Code;
+        }
+
         Result<PassphraseOptions> options = PassphraseOptionsOf(arguments);
 
         if (!options.TryGetValue(out PassphraseOptions? passphraseOptions))
@@ -163,7 +189,7 @@ public sealed class ExtractCommand : ICliCommand
 
             context.Output.Trace($"Reading {imagePath}");
 
-            Result<OpenedImage> opened = OpenedImage.Open(imagePath, passphrase);
+            Result<OpenedImage> opened = OpenedImage.Open(imagePath, passphrase, cacheCapacityBytes: cacheCapacityBytes);
 
             if (!opened.TryGetValue(out OpenedImage? image))
             {
@@ -176,7 +202,7 @@ public sealed class ExtractCommand : ICliCommand
             {
                 return extractFormat == ExtractFormat.Raw
                     ? WriteRaw(context, image, outputPath)
-                    : WriteVhd(context, image, outputPath);
+                    : WriteVhd(context, image, outputPath, dynamic);
             }
         }
         finally
@@ -278,17 +304,30 @@ public sealed class ExtractCommand : ICliCommand
         return DmgExitCode.Success;
     }
 
-    private static DmgExitCode WriteVhd(CliContext context, OpenedImage image, string outputPath)
+    private static DmgExitCode WriteVhd(CliContext context, OpenedImage image, string outputPath, bool dynamic)
     {
         context.Output.Progress(
             $"Extracting {ByteSize.Format((ulong)image.Disk.Length)} to '{outputPath}' (VHD)...");
 
         ProgressThrottle progress = new(context.Output);
 
+        VhdWriteOptions writeOptions = dynamic
+            ? VhdWriteOptions.Default with { DiskType = VhdDiskType.Dynamic }
+            : VhdWriteOptions.Default;
+
+        // The whole disk is written verbatim - no window, no offset - so the map's
+        // own coordinates (sector 0 of this same DmgBlockStream) already line up
+        // with what VhdWriter asks it about.
+        IVhdSparseMap? sparseMap = dynamic && image.Disk is DmgBlockStream blockStream
+            ? DmgSparseMap.For(blockStream)
+            : null;
+
         Result<VhdWriteResult> written = VhdWriter.WriteToFile(
             image.Disk,
             outputPath,
-            progress: new Progress<VhdWriteProgress>(update => progress.Report(update.BytesWritten, update.TotalBytes)));
+            options: writeOptions,
+            progress: new Progress<VhdWriteProgress>(update => progress.Report(update.BytesWritten, update.TotalBytes)),
+            sparseMap: sparseMap);
 
         if (!written.TryGetValue(out VhdWriteResult? result))
         {

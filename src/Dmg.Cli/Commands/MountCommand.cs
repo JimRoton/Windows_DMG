@@ -5,6 +5,7 @@ using Dmg.Cli.Parsing;
 using Dmg.Core;
 using Dmg.Core.Crypto;
 using Dmg.Core.Filesystems;
+using Dmg.Core.Imaging;
 using Dmg.Core.Vhd;
 using Dmg.Windows.Elevation;
 using Dmg.Windows.Mounts;
@@ -135,6 +136,10 @@ public sealed class MountCommand : ICliCommand
                 "keep-scratch",
                 "Leave the scratch VHD behind if the mount does not complete, instead of deleting it."),
             new OptionSpec(
+                "dynamic",
+                "Write the scratch VHD as a dynamic (allocate-on-demand) disk instead of the default fixed one."),
+            CacheOption.Spec,
+            new OptionSpec(
                 "password-stdin",
                 "Read the passphrase for an encrypted image from stdin."),
             new OptionSpec(
@@ -154,6 +159,9 @@ public sealed class MountCommand : ICliCommand
             "Decodes the volume to a scratch VHD first - not the whole image, just the volume "
             + "being mounted - and refuses before writing a byte if the scratch volume has no "
             + "room for it (exit 8).",
+            "--dynamic makes the scratch VHD allocate-on-demand instead of fixed - the free-space "
+            + "precheck accounts for that, asking only for the volume's real (sparse) size rather "
+            + "than the fixed disk's worst case.",
             "A failure to find a volume or a drive letter, or to record the mount, leaves the disk "
             + "attached: the message says so and how to proceed. Only a failure before Windows "
             + "actually attaches the disk removes the scratch VHD.",
@@ -212,7 +220,17 @@ public sealed class MountCommand : ICliCommand
 
         bool readWrite = arguments.Has("rw");
         bool keepScratch = arguments.Has("keep-scratch");
+        bool dynamic = arguments.Has("dynamic");
         arguments.TryGetValue("scratch", out string? scratchRoot);
+
+        Result<long?> cache = CacheOption.BytesFor(arguments);
+
+        if (!cache.TryGetValue(out long? cacheCapacityBytes))
+        {
+            context.Output.Error(cache.Error);
+
+            return cache.Error.Code;
+        }
 
         Result<PassphraseOptions> options = PassphraseOptionsOf(arguments);
 
@@ -241,7 +259,7 @@ public sealed class MountCommand : ICliCommand
 
             context.Output.Trace($"Reading {imagePath}");
 
-            Result<OpenedImage> opened = OpenedImage.Open(imagePath, passphrase);
+            Result<OpenedImage> opened = OpenedImage.Open(imagePath, passphrase, cacheCapacityBytes: cacheCapacityBytes);
 
             if (!opened.TryGetValue(out OpenedImage? image))
             {
@@ -260,7 +278,8 @@ public sealed class MountCommand : ICliCommand
                     readWrite,
                     requestedLetter,
                     scratchRoot,
-                    keepScratch);
+                    keepScratch,
+                    dynamic);
             }
         }
         finally
@@ -282,7 +301,8 @@ public sealed class MountCommand : ICliCommand
         bool readWrite,
         string? requestedLetter,
         string? scratchRoot,
-        bool keepScratch)
+        bool keepScratch,
+        bool dynamic)
     {
         Result<VolumeMap> mapped = VolumeMap.Read(image.Disk);
 
@@ -319,9 +339,26 @@ public sealed class MountCommand : ICliCommand
         // finally block below may remove it - see the class remarks.
         bool attached = false;
 
+        VhdWriteOptions writeOptions = dynamic
+            ? VhdWriteOptions.Default with { DiskType = VhdDiskType.Dynamic }
+            : VhdWriteOptions.Default;
+
+        // The map DmgSparseMap builds answers in sector-of-whole-disk terms, but
+        // the VHD is written from a window that starts at volume.ByteOffset, not
+        // byte zero of the disk - VhdWriter always asks a sparse map about offsets
+        // relative to the start of what it is writing. OffsetSparseMap is the shim
+        // that keeps those two coordinate spaces from being silently conflated,
+        // which matters here: a wrong "yes" from the map is a block that is never
+        // read and never written, not merely a slower conversion.
+        IVhdSparseMap? sparseMap = dynamic && image.Disk is DmgBlockStream blockStream
+            ? new OffsetSparseMap(DmgSparseMap.For(blockStream), volume.ByteOffset)
+            : null;
+
         try
         {
-            Result room = scratch.EnsureRoomFor(volume.ByteLength, _freeSpaceProbe);
+            Result room = dynamic
+                ? RequireDynamicRoom(scratch, volume.ByteLength, writeOptions.BlockSize, sparseMap, _freeSpaceProbe)
+                : scratch.EnsureRoomFor(volume.ByteLength, _freeSpaceProbe);
 
             if (!room.Ok)
             {
@@ -347,8 +384,11 @@ public sealed class MountCommand : ICliCommand
             Result<VhdWriteResult> written = VhdWriter.WriteToFile(
                 new VolumeWindowStream(image.Disk, volume.ByteOffset, volume.ByteLength),
                 scratch.VhdPath,
+                options: writeOptions,
                 progress: new Progress<VhdWriteProgress>(
-                    update => progress.Report(update.BytesWritten, update.TotalBytes)));
+                    update => progress.Report(update.BytesWritten, update.TotalBytes)),
+                freeSpaceProbe: _freeSpaceProbe,
+                sparseMap: sparseMap);
 
             if (!written.Ok)
             {
@@ -473,6 +513,25 @@ public sealed class MountCommand : ICliCommand
     }
 
     /// <summary>
+    /// The free-space precheck for a dynamic scratch VHD: the real (sparse) size
+    /// when a map is available, the worst case otherwise - never the fixed disk's
+    /// size, which a dynamic write does not need and should not have to insist on.
+    /// </summary>
+    private static Result RequireDynamicRoom(
+        ScratchSpace scratch,
+        long payloadBytes,
+        int blockSize,
+        IVhdSparseMap? sparseMap,
+        IFreeSpaceProbe? probe)
+    {
+        Result<long> sized = VhdWriter.DynamicFileSizeFor(payloadBytes, blockSize, sparseMap);
+
+        return sized.TryGetValue(out long required)
+            ? FreeSpaceCheck.Require(scratch.VhdPath, required, probe)
+            : sized.Discard();
+    }
+
+    /// <summary>
     /// Wraps a bookkeeping failure that happened after the disk was already
     /// attached, so the message tells the user what actually happened - a working
     /// mount dmg cannot find again - rather than only the bookkeeping error.
@@ -531,6 +590,47 @@ public sealed class MountCommand : ICliCommand
 
         return Result<PassphraseOptions>.Success(
             new PassphraseOptions(source, variable, arguments.Positionals));
+    }
+
+    /// <summary>
+    /// Shifts a sparse map's queries by a fixed offset, so a map built over an
+    /// entire disk's chunk index can answer for a <see cref="VolumeWindowStream"/>
+    /// that starts partway through it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="DmgSparseMap"/> answers "is this range zero" in terms of the
+    /// disk it was built from, sector zero being byte zero of that disk.
+    /// <see cref="VhdWriter"/> always asks a sparse map about offsets relative to
+    /// the start of whatever it is writing - see <see cref="IVhdSparseMap"/> - so
+    /// when the thing being written is one volume partway into the disk, every
+    /// query has to be translated back to the disk's own coordinates before the
+    /// underlying map can answer it. Getting this wrong would not slow anything
+    /// down; it would make the writer trust a "yes" that describes the wrong
+    /// bytes, which is a corrupt VHD, not a slow one.
+    /// </remarks>
+    private sealed class OffsetSparseMap(IVhdSparseMap inner, long offset) : IVhdSparseMap
+    {
+        public bool IsKnownZero(long windowOffset, long length)
+        {
+            if (windowOffset < 0 || length < 0)
+            {
+                return false;
+            }
+
+            long absoluteOffset;
+
+            try
+            {
+                absoluteOffset = checked(offset + windowOffset);
+            }
+            catch (OverflowException)
+            {
+                // False is always the safe answer - see IVhdSparseMap's remarks.
+                return false;
+            }
+
+            return inner.IsKnownZero(absoluteOffset, length);
+        }
     }
 
     /// <summary>

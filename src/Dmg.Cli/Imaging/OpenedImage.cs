@@ -63,7 +63,16 @@ public sealed class OpenedImage : IDisposable
     /// plaintext.
     /// </param>
     /// <param name="chain">The format probes. Defaults to the shipping chain.</param>
-    public static Result<OpenedImage> Open(string path, Passphrase? passphrase, ImageFormatProbeChain? chain = null)
+    /// <param name="cacheCapacityBytes">
+    /// The decoded <see cref="DmgBlockStream"/> chunk cache's byte budget, or null
+    /// for <see cref="DmgBlockStream.DefaultCacheCapacityBytes"/>. Ignored for a
+    /// raw image, which has no block stream to size.
+    /// </param>
+    public static Result<OpenedImage> Open(
+        string path,
+        Passphrase? passphrase,
+        ImageFormatProbeChain? chain = null,
+        long? cacheCapacityBytes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -153,7 +162,11 @@ public sealed class OpenedImage : IDisposable
             return parsed.CastFailure<OpenedImage>();
         }
 
-        Result<DmgBlockStream> disk = DmgBlockStream.Create(payload, image, leaveOpen: false);
+        Result<DmgBlockStream> disk = DmgBlockStream.Create(
+            payload,
+            image,
+            leaveOpen: false,
+            cacheCapacityBytes: cacheCapacityBytes ?? DmgBlockStream.DefaultCacheCapacityBytes);
 
         if (!disk.TryGetValue(out DmgBlockStream? block))
         {
