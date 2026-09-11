@@ -23,6 +23,7 @@ public static class CommandCatalog
         // deliberately a one-line edit here rather than a switch elsewhere.
         yield return new InfoCommand();
         yield return new ExtractCommand();
+        yield return new VerifyCommand();
         yield return new HelpCommand();
         yield return new VersionCommand();
     }
