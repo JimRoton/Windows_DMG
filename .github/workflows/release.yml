@@ -1,0 +1,127 @@
+# Release automation for Windows_DMG (S10.2).
+#
+# Triggered by pushing a `v*` tag. Publishes NativeAOT dmg.exe for win-x64 and
+# win-arm64 (the same publish S10.1 validates in ci.yml on every push/PR),
+# smoke-tests the win-x64 binary, computes SHA-256 checksums, and attaches
+# everything to a GitHub Release for that tag - creating the Release first if
+# the tag doesn't already have one.
+#
+# This workflow does not create tags. Pushing the tag is the trigger; someone
+# (or another automation) does that separately.
+#
+# No third-party GitHub Actions are used for the release step itself - the
+# `gh` CLI ships on GitHub-hosted runners and talks to the REST API directly,
+# which keeps this in the spirit of ADR-002 (zero third-party dependencies)
+# even though that guard only scans src/.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+# Tags are normally pushed once, but don't let a re-push of the same tag race
+# itself into a half-uploaded release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: publish + attach to GitHub Release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Packages.props', '**/global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Publish win-x64
+        run: >
+          dotnet publish src/Dmg.Cli/Dmg.Cli.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --output artifacts/publish/win-x64
+
+      - name: Publish win-arm64
+        run: >
+          dotnet publish src/Dmg.Cli/Dmg.Cli.csproj
+          --configuration Release
+          --runtime win-arm64
+          --self-contained true
+          --output artifacts/publish/win-arm64
+
+      # win-arm64 cannot execute on this x64 runner, so only win-x64 is
+      # smoke-tested - same constraint as the `publish` job in ci.yml. This is
+      # a release gate: a binary that fails this must not reach the Release.
+      - name: Smoke-test win-x64 binary
+        shell: pwsh
+        run: |
+          & "artifacts/publish/win-x64/dmg.exe" version
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            Write-Error "dmg.exe version exited $exitCode, expected 0"
+            exit 1
+          }
+          Write-Host "dmg.exe version (win-x64) exited 0 as expected."
+
+      - name: Stage release assets and compute SHA-256 checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/release -Force | Out-Null
+
+          Copy-Item artifacts/publish/win-x64/dmg.exe   artifacts/release/dmg-win-x64.exe
+          Copy-Item artifacts/publish/win-arm64/dmg.exe artifacts/release/dmg-win-arm64.exe
+
+          Push-Location artifacts/release
+          $files = "dmg-win-x64.exe", "dmg-win-arm64.exe"
+          $lines = foreach ($f in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 $f).Hash.ToLowerInvariant()
+            Write-Host ("{0}  {1}" -f $hash, $f)
+            "{0}  {1}" -f $hash, $f
+          }
+          Set-Content -Path SHA256SUMS.txt -Value $lines -Encoding ascii
+          Pop-Location
+
+      - name: Create or update GitHub Release and upload assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --generate-notes
+          fi
+
+          gh release upload "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            artifacts/release/dmg-win-x64.exe \
+            artifacts/release/dmg-win-arm64.exe \
+            artifacts/release/SHA256SUMS.txt
