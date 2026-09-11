@@ -17,9 +17,11 @@ public static class CommandCatalog
     /// <summary>The shipping verbs, in listing order.</summary>
     private static IEnumerable<ICliCommand> CreateCommands()
     {
-        // Verbs arrive with their own stories: `info` in S9.3, `help` and
-        // `version` in S9.9, the mount family in epic 10. Registration is
+        // Listing order, not alphabetical: what the tool is for comes first and
+        // the two that describe the tool itself come last. The mount family
+        // arrives in epic 10 and slots in above `help`. Registration is
         // deliberately a one-line edit here rather than a switch elsewhere.
-        yield break;
+        yield return new HelpCommand();
+        yield return new VersionCommand();
     }
 }

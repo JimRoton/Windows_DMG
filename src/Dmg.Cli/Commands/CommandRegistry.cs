@@ -62,6 +62,12 @@ public sealed class CommandRegistry
         }
     }
 
+    /// <summary>
+    /// A registry with no verbs in it - the default a <see cref="CliContext"/>
+    /// takes when a caller has no catalogue to give it.
+    /// </summary>
+    public static CommandRegistry Empty { get; } = new([]);
+
     /// <summary>The registered verbs, in registration order.</summary>
     public IReadOnlyList<ICliCommand> Commands => _commands;
 

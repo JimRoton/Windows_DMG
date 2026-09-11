@@ -1,3 +1,4 @@
+using Dmg.Cli.Help;
 using Dmg.Cli.Parsing;
 using Dmg.Core;
 using Dmg.Core.Diagnostics;
@@ -15,6 +16,21 @@ namespace Dmg.Cli.Commands;
 /// Nothing here writes to <see cref="Console"/> or calls
 /// <see cref="Environment.Exit(int)"/>, so a test drives the whole tool - argument
 /// handling, verb, output, exit code - in-process.
+/// </para>
+/// <para>
+/// <b>Help is answered here, once, for every verb.</b> <c>--help</c> is checked
+/// before the verb's own parse runs, so <c>dmg info --help</c> prints the help
+/// rather than complaining that <c>IMAGE</c> is missing - which is what a verb
+/// checking for it after parsing would do, and is the single most common way a
+/// hand-rolled CLI gets help wrong. It also means a verb cannot forget to support
+/// it, and cannot support it differently from its neighbour.
+/// </para>
+/// <para>
+/// <b>Where help goes.</b> Asked for, it is a result: stdout, exit 0. Reached by
+/// getting something wrong, it is an error: stderr, exit 2 - and what goes there is
+/// the line saying what was wrong plus a pointer to the help, never the help
+/// itself, because a screen of options printed on top of an error message buries
+/// the message.
 /// </para>
 /// <para>
 /// <b>The top-level exception handler lives here, not in <c>Main</c>.</b> Every
@@ -79,12 +95,33 @@ public sealed class CommandDispatcher
     {
         if (arguments.Count == 0)
         {
-            output.Error(DmgError.Usage($"No command given.{KnownVerbs()}"));
+            // Bare `dmg` is a mistake, not a request. The help would be a fine
+            // thing to show, but it belongs on stdout and this exits 2, so what
+            // stderr gets is the mistake and the way out of it.
+            output.Error(DmgError.Usage(
+                $"No command given.{KnownVerbs()} {HelpText.Pointer(null)}",
+                "Usage: dmg [OPTIONS] <command> [ARGUMENTS]"));
 
             return DmgExitCode.UsageError;
         }
 
         string verb = arguments[0];
+
+        // `dmg --help` and `dmg -h`, before anything is treated as a verb.
+        if (verb.Equals(HelpRequest.LongForm, StringComparison.Ordinal)
+            || verb.Equals(HelpRequest.ShortForm, StringComparison.Ordinal))
+        {
+            HelpText.WriteTo(output, HelpText.ForTool(_registry));
+
+            return DmgExitCode.Success;
+        }
+
+        // `dmg --version` is the switch spelling of the verb. Both exist because
+        // both are what people type, and neither should have its own code path.
+        if (verb.Equals("--version", StringComparison.Ordinal) && _registry.TryGet("version", out ICliCommand? version))
+        {
+            return version.Execute(new CliContext([], output, _registry));
+        }
 
         if (!_registry.TryGet(verb, out ICliCommand? command))
         {
@@ -92,7 +129,7 @@ public sealed class CommandDispatcher
 
             output.Error(DmgError.Usage(
                 suggestion is null
-                    ? $"'{verb}' is not a dmg command.{KnownVerbs()}"
+                    ? $"'{verb}' is not a dmg command.{KnownVerbs()} {HelpText.Pointer(null)}"
                     : $"'{verb}' is not a dmg command. Did you mean '{suggestion}'?",
                 "Verbs are matched exactly, in lower case."));
 
@@ -106,7 +143,16 @@ public sealed class CommandDispatcher
             rest[index - 1] = arguments[index];
         }
 
-        return command.Execute(new CliContext(rest, output));
+        // Checked before the verb runs, so `dmg info --help` answers the question
+        // asked rather than complaining that IMAGE is missing.
+        if (HelpRequest.IsRequestedIn(rest))
+        {
+            HelpText.WriteTo(output, HelpText.ForCommand(command));
+
+            return DmgExitCode.Success;
+        }
+
+        return command.Execute(new CliContext(rest, output, _registry));
     }
 
     /// <summary>

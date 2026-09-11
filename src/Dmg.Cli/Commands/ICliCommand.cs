@@ -1,3 +1,4 @@
+using Dmg.Cli.Parsing;
 using Dmg.Core;
 
 namespace Dmg.Cli.Commands;
@@ -33,6 +34,25 @@ public interface ICliCommand
     /// One line describing the verb, for the top-level help listing.
     /// </summary>
     string Summary { get; }
+
+    /// <summary>
+    /// What this verb accepts: its options and the names of its positional
+    /// arguments.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One table, two readers. <see cref="Parsing.ArgumentParser"/> parses against
+    /// it and <c>dmg help &lt;verb&gt;</c> prints from it, so an option cannot exist
+    /// without being documented and cannot be documented without existing. Every
+    /// CLI that keeps its help in a separate string eventually ships one that lies.
+    /// </para>
+    /// <para>
+    /// It is on the interface rather than a detail of each verb because
+    /// <see cref="CommandDispatcher"/> answers <c>--help</c> for every verb from
+    /// here, once, instead of each verb remembering to check for it.
+    /// </para>
+    /// </remarks>
+    CommandLineSpec Spec { get; }
 
     /// <summary>
     /// Runs the verb.

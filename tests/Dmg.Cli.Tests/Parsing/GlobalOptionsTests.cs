@@ -84,6 +84,37 @@ public sealed class GlobalOptionsTests
     }
 
     [Fact]
+    public void AHelpRequestIsReportedButLeftOnTheLine()
+    {
+        GlobalOptions globals = Ok(["info", "--help"]);
+
+        Assert.True(globals.WantsHelp);
+
+        // Which help to print is the dispatcher's business, so the switch stays
+        // where the user put it.
+        Assert.Contains("--help", globals.Remaining);
+    }
+
+    [Fact]
+    public void AHelpRequestIsReportedAlongsideWhatItOverrides()
+    {
+        GlobalOptions globals = Ok(["--quiet", "--json", "-h"]);
+
+        // Extract reports what was typed; Program is what decides that a help
+        // request beats both. Neither is quietly rewritten here.
+        Assert.True(globals.WantsHelp);
+        Assert.Equal(Verbosity.Quiet, globals.Verbosity);
+        Assert.True(globals.IsJson);
+    }
+
+    [Fact]
+    public void NoHelpMeansNoHelp()
+    {
+        Assert.False(Ok(["info", "image.dmg"]).WantsHelp);
+        Assert.False(Ok(["info", "--", "--help"]).WantsHelp);
+    }
+
+    [Fact]
     public void NullIsRejected()
     {
         Assert.Throws<ArgumentNullException>(() => GlobalOptions.Extract(null!));

@@ -1,3 +1,4 @@
+using Dmg.Cli.Help;
 using Dmg.Core;
 using Dmg.Core.Diagnostics;
 
@@ -15,6 +16,15 @@ namespace Dmg.Cli.Parsing;
 /// from the command line first, wherever they appear, and a verb never sees them.
 /// </para>
 /// <para>
+/// <b>Asking for help beats asking for quiet.</b> <c>--quiet</c> drops everything
+/// but errors and <c>--json</c> drops everything but the document, so under the
+/// plain rules <c>dmg --quiet --help</c> prints nothing at all - a user typing
+/// <c>--help</c> and getting an empty screen back. The combination is nonsense
+/// either way; the useful way to resolve it is to answer the question, so a help
+/// request forces a plain human sink and <see cref="Verbosity"/> and
+/// <see cref="IsJson"/> report what would otherwise have applied.
+/// </para>
+/// <para>
 /// <b>The one blind spot, and its escape hatch.</b> Scanning the whole line means a
 /// value that happens to be spelled <c>--json</c> would be taken as the switch.
 /// Scanning stops at <c>--</c>, so <c>dmg info -- --json</c> opens a file with that
@@ -24,10 +34,16 @@ namespace Dmg.Cli.Parsing;
 /// <param name="Verbosity">How much the tool should say.</param>
 /// <param name="IsJson">True when stdout is reserved for one JSON document.</param>
 /// <param name="Remaining">The command line with these switches removed.</param>
+/// <param name="WantsHelp">
+/// True when <c>--help</c> or <c>-h</c> is on the line. It is not one of these
+/// switches and is left in <see cref="Remaining"/> for the dispatcher to route;
+/// it is reported here only because it overrides the other two.
+/// </param>
 public sealed record GlobalOptions(
     Verbosity Verbosity,
     bool IsJson,
-    IReadOnlyList<string> Remaining)
+    IReadOnlyList<string> Remaining,
+    bool WantsHelp = false)
 {
     /// <summary>The switches, as their specs, for the help listing.</summary>
     public static IReadOnlyList<OptionSpec> Specs { get; } =
@@ -100,6 +116,10 @@ public sealed record GlobalOptions(
             ? Verbosity.Quiet
             : verbose ? Verbosity.Verbose : Verbosity.Normal;
 
-        return Result<GlobalOptions>.Success(new GlobalOptions(verbosity, json, remaining));
+        return Result<GlobalOptions>.Success(new GlobalOptions(
+            verbosity,
+            json,
+            remaining,
+            HelpRequest.IsRequestedIn(arguments)));
     }
 }

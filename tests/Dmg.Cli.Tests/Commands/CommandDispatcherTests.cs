@@ -1,4 +1,6 @@
 using Dmg.Cli.Commands;
+using Dmg.Cli.Help;
+using Dmg.Cli.Parsing;
 using Dmg.Core;
 using Dmg.Core.Diagnostics;
 
@@ -45,6 +47,103 @@ public sealed class CommandDispatcherTests
         dispatcher.Execute(["info"], new RecordingOutput().Output);
 
         Assert.Empty(info.LastArguments);
+    }
+
+    [Fact]
+    public void ADoubleDashHelpPrintsTheToolHelpToStdoutAndExitsZero()
+    {
+        CommandDispatcher dispatcher = new(new CommandRegistry([new FakeCommand("info")]));
+        RecordingOutput recorder = new();
+
+        Assert.Equal(DmgExitCode.Success, dispatcher.Execute(["--help"], recorder.Output));
+        Assert.Empty(recorder.Stderr);
+        Assert.Equal(HelpText.Tagline, recorder.StdoutLines[0]);
+    }
+
+    [Fact]
+    public void AShortDashHPrintsTheSameThing()
+    {
+        CommandDispatcher dispatcher = new(new CommandRegistry([new FakeCommand("info")]));
+        RecordingOutput recorder = new();
+
+        Assert.Equal(DmgExitCode.Success, dispatcher.Execute(["-h"], recorder.Output));
+        Assert.Equal(HelpText.Tagline, recorder.StdoutLines[0]);
+    }
+
+    [Fact]
+    public void HelpForAVerbIsAnsweredBeforeTheVerbRuns()
+    {
+        // The point of doing this here rather than in each verb: `dmg info --help`
+        // has to print the help, not complain that IMAGE is missing.
+        FakeCommand info = new("info", new CommandLineSpec("info", [], ["IMAGE"]));
+        CommandDispatcher dispatcher = new(new CommandRegistry([info]));
+        RecordingOutput recorder = new();
+
+        Assert.Equal(DmgExitCode.Success, dispatcher.Execute(["info", "--help"], recorder.Output));
+
+        Assert.Equal(0, info.Calls);
+        Assert.Empty(recorder.Stderr);
+        Assert.Contains("Usage: dmg info IMAGE", recorder.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HelpIsAnsweredWhereverOnTheVerbsLineItAppears()
+    {
+        FakeCommand info = new("info", new CommandLineSpec("info", [], ["IMAGE"]));
+        CommandDispatcher dispatcher = new(new CommandRegistry([info]));
+        RecordingOutput recorder = new();
+
+        Assert.Equal(DmgExitCode.Success, dispatcher.Execute(["info", "image.dmg", "-h"], recorder.Output));
+        Assert.Equal(0, info.Calls);
+    }
+
+    [Fact]
+    public void HelpAfterTheTerminatorIsJustAnArgument()
+    {
+        FakeCommand info = new("info");
+        CommandDispatcher dispatcher = new(new CommandRegistry([info]));
+
+        dispatcher.Execute(["info", "--", "--help"], new RecordingOutput().Output);
+
+        Assert.Equal(1, info.Calls);
+        Assert.Equal(["--", "--help"], info.LastArguments);
+    }
+
+    [Fact]
+    public void DoubleDashVersionIsTheVersionVerb()
+    {
+        FakeCommand version = new("version");
+        CommandDispatcher dispatcher = new(new CommandRegistry([version]));
+
+        Assert.Equal(DmgExitCode.Success, dispatcher.Execute(["--version"], new RecordingOutput().Output));
+        Assert.Equal(1, version.Calls);
+        Assert.Empty(version.LastArguments);
+    }
+
+    [Fact]
+    public void DoubleDashVersionWithoutAVersionVerbIsStillAUsageError()
+    {
+        CommandDispatcher dispatcher = new(new CommandRegistry([new FakeCommand("info")]));
+        RecordingOutput recorder = new();
+
+        Assert.Equal(DmgExitCode.UsageError, dispatcher.Execute(["--version"], recorder.Output));
+        Assert.Contains("is not a dmg command", recorder.Stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AVerbCanSeeTheCatalogueButIsHandedItReadOnly()
+    {
+        CommandRegistry? seen = null;
+        FakeCommand info = new("info", context =>
+        {
+            seen = context.Registry;
+            return DmgExitCode.Success;
+        });
+        CommandRegistry registry = new([info]);
+
+        new CommandDispatcher(registry).Execute(["info"], new RecordingOutput().Output);
+
+        Assert.Same(registry, seen);
     }
 
     [Fact]

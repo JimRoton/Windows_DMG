@@ -1,4 +1,5 @@
 using Dmg.Cli.Commands;
+using Dmg.Cli.Parsing;
 using Dmg.Core;
 
 namespace Dmg.Cli.Tests.Commands;
@@ -17,10 +18,16 @@ internal sealed class FakeCommand : ICliCommand
     {
     }
 
-    internal FakeCommand(string verb, Func<CliContext, DmgExitCode> body)
+    internal FakeCommand(string verb, CommandLineSpec spec)
+        : this(verb, _ => DmgExitCode.Success, spec)
+    {
+    }
+
+    internal FakeCommand(string verb, Func<CliContext, DmgExitCode> body, CommandLineSpec? spec = null)
     {
         Verb = verb;
         _body = body;
+        Spec = spec ?? new CommandLineSpec(verb, []);
     }
 
     /// <inheritdoc />
@@ -28,6 +35,9 @@ internal sealed class FakeCommand : ICliCommand
 
     /// <inheritdoc />
     public string Summary => $"The {Verb} test double.";
+
+    /// <inheritdoc />
+    public CommandLineSpec Spec { get; }
 
     /// <summary>How many times the verb ran.</summary>
     internal int Calls { get; private set; }
