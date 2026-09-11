@@ -18,12 +18,14 @@ public static class CommandCatalog
     private static IEnumerable<ICliCommand> CreateCommands()
     {
         // Listing order, not alphabetical: what the tool is for comes first and
-        // the two that describe the tool itself come last. The mount family
-        // arrives in epic 10 and slots in above `help`. Registration is
-        // deliberately a one-line edit here rather than a switch elsewhere.
+        // the two that describe the tool itself come last. The rest of the mount
+        // family (unmount, list) slots in beside `mount`, above `help`.
+        // Registration is deliberately a one-line edit here rather than a switch
+        // elsewhere.
         yield return new InfoCommand();
         yield return new ExtractCommand();
         yield return new VerifyCommand();
+        yield return new MountCommand();
         yield return new HelpCommand();
         yield return new VersionCommand();
     }
