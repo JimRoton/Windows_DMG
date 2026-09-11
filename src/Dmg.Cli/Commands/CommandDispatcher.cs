@@ -1,3 +1,4 @@
+using Dmg.Cli.Parsing;
 using Dmg.Core;
 using Dmg.Core.Diagnostics;
 
@@ -87,8 +88,12 @@ public sealed class CommandDispatcher
 
         if (!_registry.TryGet(verb, out ICliCommand? command))
         {
+            string? suggestion = NearestMatch.Find(verb, _registry.Verbs);
+
             output.Error(DmgError.Usage(
-                $"'{verb}' is not a dmg command.{KnownVerbs()}",
+                suggestion is null
+                    ? $"'{verb}' is not a dmg command.{KnownVerbs()}"
+                    : $"'{verb}' is not a dmg command. Did you mean '{suggestion}'?",
                 "Verbs are matched exactly, in lower case."));
 
             return DmgExitCode.UsageError;
