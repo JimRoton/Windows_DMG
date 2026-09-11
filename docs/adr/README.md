@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Six decisions that shape everything else. Each records the context, the decision,
+Seven decisions that shape everything else. Each records the context, the decision,
 and what it costs — so a later reader can tell whether the reasoning still holds.
 
 | ADR | Decision | Status |
@@ -11,3 +11,4 @@ and what it costs — so a later reader can tell whether the reasoning still hol
 | [004](ADR-004-stream-seam-and-codec-strategy.md) | `System.IO.Stream` as the seam; Strategy for codecs | Proposed |
 | [005](ADR-005-encryption-as-a-stream-decorator.md) | Encryption as a Stream decorator, not a parser mode | Proposed |
 | [006](ADR-006-test-framework-exception.md) | xUnit permitted for tests only | Proposed |
+| [007](ADR-007-xunit-skippablefact.md) | Xunit.SkippableFact permitted for tests only (MS-PL) | Accepted |
