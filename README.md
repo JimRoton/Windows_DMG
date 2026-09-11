@@ -19,7 +19,19 @@ Unmounted E:
 is a single self-contained NativeAOT binary — no .NET runtime install, no other
 files needed.
 
-**Build from source** (requires the .NET 10 SDK):
+**Build from source.** Two prerequisites, not one:
+
+- the .NET 10 SDK, and
+- **the MSVC toolchain** — Visual Studio 2022 (or the standalone Build Tools)
+  with the **Desktop development with C++** workload, which supplies `link.exe`
+  and the Windows SDK.
+
+The second one is easy to miss. `PublishAot` is set in the project file, and
+NativeAOT compiles through the platform linker, so without it the publish fails
+with `error : Platform linker not found. Ensure you have all the required
+prerequisites` — an error about C++ tooling in the middle of a C# build. GitHub's
+`windows-latest` runners have the workload preinstalled, which is why CI never
+sees this.
 
 ```
 dotnet publish src/Dmg.Cli/Dmg.Cli.csproj -c Release -r win-x64 --self-contained true -o out
@@ -27,6 +39,18 @@ dotnet publish src/Dmg.Cli/Dmg.Cli.csproj -c Release -r win-x64 --self-contained
 
 Swap `win-x64` for `win-arm64` on Arm64 Windows. The binary lands at
 `out/dmg.exe`.
+
+**Without the C++ workload**, add `-p:PublishAot=false` to get an ordinary
+self-contained build instead:
+
+```
+dotnet publish src/Dmg.Cli/Dmg.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=false -p:PublishSingleFile=true -o out
+```
+
+That still needs no .NET runtime on the target machine, and it cross-builds from
+macOS or Linux, which the AOT path cannot. It is bigger (~36 MB against ~5 MB)
+and starts marginally slower, and it is **not** what ships — use it for
+functional testing, not for validating the release binary.
 
 ## Usage
 
