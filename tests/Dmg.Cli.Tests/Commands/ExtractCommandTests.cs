@@ -99,6 +99,90 @@ public sealed class ExtractCommandTests : IDisposable
     }
 
     [Fact]
+    public void DynamicWritesADynamicVhd()
+    {
+        if (Fixtures.Path("exfat-zlib.dmg") is not string path)
+        {
+            return;
+        }
+
+        string output = OutputPath("exfat-dynamic.vhd");
+        RecordingOutput recording = new();
+
+        Assert.Equal(
+            DmgExitCode.Success,
+            Command.Execute(new CliContext([path, output, "--dynamic"], recording.Output)));
+
+        Assert.True(File.Exists(output));
+        Assert.Contains(recording.StdoutLines, line => line.Contains("Dynamic VHD", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DynamicWithRawFormatIsAUsageError()
+    {
+        RecordingOutput recording = new();
+
+        Assert.Equal(
+            DmgExitCode.UsageError,
+            Command.Execute(new CliContext(
+                ["a.dmg", "b.raw", "--format", "raw", "--dynamic"],
+                recording.Output)));
+
+        Assert.Contains("--dynamic only makes sense", recording.Stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ACustomCacheBudgetStillExtractsCorrectly()
+    {
+        if (Fixtures.Path("exfat-zlib.dmg") is not string path)
+        {
+            return;
+        }
+
+        string output = OutputPath("exfat-cache.raw");
+        RecordingOutput recording = new();
+
+        Assert.Equal(
+            DmgExitCode.Success,
+            Command.Execute(new CliContext([path, output, "--format", "raw", "--cache", "1"], recording.Output)));
+
+        Assert.True(File.Exists(output));
+        Assert.True(new FileInfo(output).Length > 0);
+    }
+
+    [Fact]
+    public void CacheZeroIsAUsageError()
+    {
+        RecordingOutput recording = new();
+
+        Assert.Equal(
+            DmgExitCode.UsageError,
+            Command.Execute(new CliContext(["a.dmg", "b.vhd", "--cache", "0"], recording.Output)));
+
+        Assert.Contains("--cache must be a positive", recording.Stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ANegativeCacheIsAUsageError()
+    {
+        RecordingOutput recording = new();
+
+        Assert.Equal(
+            DmgExitCode.UsageError,
+            Command.Execute(new CliContext(["a.dmg", "b.vhd", "--cache", "-1"], recording.Output)));
+    }
+
+    [Fact]
+    public void CacheNotANumberIsAUsageError()
+    {
+        RecordingOutput recording = new();
+
+        Assert.Equal(
+            DmgExitCode.UsageError,
+            Command.Execute(new CliContext(["a.dmg", "b.vhd", "--cache", "lots"], recording.Output)));
+    }
+
+    [Fact]
     public void RawFormatIsAcceptedExplicitly()
     {
         if (Fixtures.Path("hfsplus.dmg") is not string path)
@@ -281,6 +365,8 @@ public sealed class ExtractCommandTests : IDisposable
         Assert.Equal(["IMAGE", "OUTPUT"], Command.Spec.Positionals);
         Assert.Contains(Command.Spec.Options, option => option.Name == "format");
         Assert.Contains(Command.Spec.Options, option => option.Name == "force");
+        Assert.Contains(Command.Spec.Options, option => option.Name == "dynamic");
+        Assert.Contains(Command.Spec.Options, option => option.Name == "cache");
         Assert.Contains(Command.Spec.Options, option => option.Name == "password-stdin");
         Assert.Contains(Command.Spec.Options, option => option.Name == "password-env");
         Assert.NotEmpty(Command.Spec.Notes);

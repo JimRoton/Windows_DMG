@@ -69,6 +69,7 @@ public sealed class VerifyCommand : ICliCommand
     public CommandLineSpec Spec { get; } = new(
         "verify",
         [
+            CacheOption.Spec,
             new OptionSpec(
                 "password-stdin",
                 "Read the passphrase for an encrypted image from stdin."),
@@ -118,6 +119,15 @@ public sealed class VerifyCommand : ICliCommand
 
         string imagePath = arguments.Positionals[0];
 
+        Result<long?> cache = CacheOption.BytesFor(arguments);
+
+        if (!cache.TryGetValue(out long? cacheCapacityBytes))
+        {
+            context.Output.Error(cache.Error);
+
+            return cache.Error.Code;
+        }
+
         Result<PassphraseOptions> options = PassphraseOptionsOf(arguments);
 
         if (!options.TryGetValue(out PassphraseOptions? passphraseOptions))
@@ -145,7 +155,7 @@ public sealed class VerifyCommand : ICliCommand
 
             context.Output.Trace($"Reading {imagePath}");
 
-            Result<OpenedImage> opened = OpenedImage.Open(imagePath, passphrase);
+            Result<OpenedImage> opened = OpenedImage.Open(imagePath, passphrase, cacheCapacityBytes: cacheCapacityBytes);
 
             if (!opened.TryGetValue(out OpenedImage? image))
             {

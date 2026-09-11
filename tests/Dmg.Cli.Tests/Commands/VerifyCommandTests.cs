@@ -180,6 +180,44 @@ public sealed class VerifyCommandTests
     }
 
     [Fact]
+    public void ACustomCacheBudgetStillVerifiesClean()
+    {
+        if (Fixtures.Path("exfat-zlib.dmg") is not string path)
+        {
+            return;
+        }
+
+        RecordingOutput output = new();
+
+        Assert.Equal(
+            DmgExitCode.Success,
+            Command.Execute(new CliContext([path, "--cache", "1"], output.Output)));
+        Assert.Contains(output.StdoutLines, line => line.Contains("OK", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CacheZeroIsAUsageError()
+    {
+        RecordingOutput output = new();
+
+        Assert.Equal(
+            DmgExitCode.UsageError,
+            Command.Execute(new CliContext(["a.dmg", "--cache", "0"], output.Output)));
+
+        Assert.Contains("--cache must be a positive", output.Stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CacheNotANumberIsAUsageError()
+    {
+        RecordingOutput output = new();
+
+        Assert.Equal(
+            DmgExitCode.UsageError,
+            Command.Execute(new CliContext(["a.dmg", "--cache", "lots"], output.Output)));
+    }
+
+    [Fact]
     public void BothPassphraseSourcesAtOnceIsAUsageError()
     {
         RecordingOutput output = new();
@@ -198,6 +236,7 @@ public sealed class VerifyCommandTests
     {
         Assert.Equal("verify", Command.Spec.Verb);
         Assert.Equal(["IMAGE"], Command.Spec.Positionals);
+        Assert.Contains(Command.Spec.Options, option => option.Name == "cache");
         Assert.Contains(Command.Spec.Options, option => option.Name == "password-stdin");
         Assert.Contains(Command.Spec.Options, option => option.Name == "password-env");
         Assert.NotEmpty(Command.Spec.Notes);
