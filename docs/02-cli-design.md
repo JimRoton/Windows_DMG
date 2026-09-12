@@ -336,6 +336,7 @@ The constraint is zero third-party libraries in the shipped binary. It is met.
 | XML property list | `System.Xml` (`XmlReader`) | .NET BCL | MIT |
 | Base64 | `Convert.FromBase64String` | .NET BCL | MIT |
 | VHD attach / detach | `virtdisk.dll` P/Invoke | Windows OS | OS API |
+| On-demand file projection | `ProjectedFSLib.dll` P/Invoke ([ADR-008](adr/ADR-008-projfs-projection-head.md)) | Windows OS | OS API |
 | Volume + device enumeration | `kernel32.dll`, `DeviceIoControl` | Windows OS | OS API |
 | Elevation check | `advapi32.dll` token query | Windows OS | OS API |
 | Apple ADC decode | **written here**, ~200 lines | this repo | MIT |

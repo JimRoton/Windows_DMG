@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Seven decisions that shape everything else. Each records the context, the decision,
+Eight decisions that shape everything else. Each records the context, the decision,
 and what it costs — so a later reader can tell whether the reasoning still holds.
 
 | ADR | Decision | Status |
@@ -12,3 +12,4 @@ and what it costs — so a later reader can tell whether the reasoning still hol
 | [005](ADR-005-encryption-as-a-stream-decorator.md) | Encryption as a Stream decorator, not a parser mode | Proposed |
 | [006](ADR-006-test-framework-exception.md) | xUnit permitted for tests only | Proposed |
 | [007](ADR-007-xunit-skippablefact.md) | Xunit.SkippableFact permitted for tests only (MS-PL) | Accepted |
+| [008](ADR-008-projfs-projection-head.md) | A ProjFS projection head for images too large to materialise | Accepted |
