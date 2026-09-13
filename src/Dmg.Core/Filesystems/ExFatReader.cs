@@ -67,6 +67,9 @@ public sealed record ExFatEntry(
 /// </remarks>
 public sealed class ExFatReader
 {
+    /// <summary>Allocation Bitmap Directory Entry: which clusters are in use.</summary>
+    internal const byte AllocationBitmapEntry = 0x81;
+
     /// <summary>File Directory Entry: attributes and timestamps.</summary>
     internal const byte FileEntry = 0x85;
 
@@ -109,6 +112,14 @@ public sealed class ExFatReader
 
     /// <summary>The most entries one directory may hold, to bound a listing.</summary>
     internal const int MaxEntriesPerDirectory = 1 << 18;
+
+    /// <summary>
+    /// The largest allocation bitmap this reader will load: 64 MiB, which is one
+    /// bit for each of half a billion clusters and far beyond any volume that
+    /// exists. A bitmap larger than this is a number out of a hostile image, not a
+    /// volume to allocate for.
+    /// </summary>
+    internal const ulong MaxBitmapBytes = 64UL * 1024 * 1024;
 
     private readonly VolumeReader _volume;
     private readonly ExFatGeometry _geometry;
@@ -168,6 +179,92 @@ public sealed class ExFatReader
 
     /// <summary>The volume's layout.</summary>
     internal ExFatGeometry Geometry => _geometry;
+
+    /// <summary>
+    /// Reads the volume's allocation bitmap: which clusters hold data and which are
+    /// free.
+    /// </summary>
+    /// <returns>
+    /// The bitmap, or null when the volume declares none - which is malformed for
+    /// exFAT but is reported as "no answer" rather than a failure, because every
+    /// caller of this can simply do more work instead.
+    /// </returns>
+    /// <remarks>
+    /// The bitmap lives in a <c>0x81</c> entry in the root directory, beside the
+    /// volume label the probe already looks for. It is the only thing on an exFAT
+    /// volume that says which clusters are free without reading them.
+    /// </remarks>
+    public Result<ExFatAllocationBitmap?> ReadAllocationBitmap()
+    {
+        Result<byte[]> root = ReadChain(
+            _geometry.RootDirectoryCluster,
+            contiguous: false,
+            length: 0,
+            "root directory");
+
+        if (!root.TryGetValue(out byte[]? bytes))
+        {
+            return root.CastFailure<ExFatAllocationBitmap?>();
+        }
+
+        for (int offset = 0; offset + 32 <= bytes.Length; offset += 32)
+        {
+            byte type = bytes[offset];
+
+            if (type == EndOfDirectory)
+            {
+                break;
+            }
+
+            if (type != AllocationBitmapEntry)
+            {
+                continue;
+            }
+
+            ReadOnlySpan<byte> entry = bytes.AsSpan(offset, 32);
+
+            // Bit 0 of the flags picks which FAT's bitmap this is. On a volume with
+            // one FAT - everything hdiutil and Windows write - only the first
+            // exists, and the second is not something this build has a use for.
+            if ((entry[1] & 0x01) != 0)
+            {
+                continue;
+            }
+
+            uint firstCluster = BinaryPrimitives.ReadUInt32LittleEndian(entry[20..]);
+            ulong dataLength = BinaryPrimitives.ReadUInt64LittleEndian(entry[24..]);
+
+            // One bit per cluster. A bitmap that does not cover the heap, or that
+            // claims far more than it needs, describes a volume this reader should
+            // not be guessing about.
+            ulong needed = (_geometry.ClusterCount + 7) / 8;
+
+            if (dataLength < needed || dataLength > MaxBitmapBytes)
+            {
+                return Result<ExFatAllocationBitmap?>.Failure(DmgError.Corrupt(
+                    "This volume's exFAT allocation bitmap is not the size its cluster count needs.",
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"DataLength={dataLength}, ClusterCount={_geometry.ClusterCount} needs {needed} bytes.")));
+            }
+
+            Result<byte[]> read = ReadChain(
+                firstCluster,
+                contiguous: false,
+                length: (long)dataLength,
+                "allocation bitmap");
+
+            return read.TryGetValue(out byte[]? bits)
+                ? Result<ExFatAllocationBitmap?>.Success(new ExFatAllocationBitmap(
+                    bits,
+                    _geometry.ClusterCount,
+                    _geometry.BytesPerCluster,
+                    (long)_geometry.ClusterHeapOffsetSectors * _geometry.BytesPerSector))
+                : read.CastFailure<ExFatAllocationBitmap?>();
+        }
+
+        return Result<ExFatAllocationBitmap?>.Success(null);
+    }
 
     /// <summary>Lists the root directory.</summary>
     public Result<IReadOnlyList<ExFatEntry>> ReadRootDirectory() =>
