@@ -636,6 +636,13 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
                 // worked.
                 string[] entries = [.. Directory.EnumerateFileSystemEntries(options.RootPath)];
 
+                // Every entry is attempted, and the failures are collected rather than
+                // thrown. One file held open by Explorer must not leave the other
+                // hundred behind: what cannot be removed is worth naming, but what
+                // can be removed is decrypted content that should not survive the
+                // projection.
+                List<string> survived = [];
+
                 foreach (string entry in entries)
                 {
                     if (!ScratchLayout.IsWithin(options.RootPath, entry))
@@ -645,22 +652,49 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
                             $"root '{options.RootPath}', entry '{entry}'"));
                     }
 
-                    if (Directory.Exists(entry))
+                    try
                     {
-                        Directory.Delete(entry, recursive: true);
+                        if (Directory.Exists(entry))
+                        {
+                            Directory.Delete(entry, recursive: true);
+                        }
+                        else
+                        {
+                            File.Delete(entry);
+                        }
                     }
-                    else
+                    catch (Exception exception) when (
+                        exception is IOException or UnauthorizedAccessException)
                     {
-                        File.Delete(entry);
+                        survived.Add($"{entry}: {exception.Message}");
                     }
                 }
 
-                if (rootCreated)
+                if (survived.Count == 0 && rootCreated)
                 {
-                    Directory.Delete(options.RootPath, recursive: false);
+                    try
+                    {
+                        Directory.Delete(options.RootPath, recursive: false);
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException or UnauthorizedAccessException)
+                    {
+                        survived.Add($"{options.RootPath}: {exception.Message}");
+                    }
                 }
 
-                return Result.Success();
+                if (survived.Count == 0)
+                {
+                    return Result.Success();
+                }
+
+                return Result.Failure(new DmgError(
+                    DmgExitCode.MountFailed,
+                    $"The projection stopped and '{options.RootPath}' was mostly cleared, but "
+                    + $"{survived.Count} item(s) could not be removed and are still there, "
+                    + "decrypted. Close whatever is using them - an open Explorer window on that "
+                    + "folder is the usual culprit - and delete them by hand.",
+                    string.Join("; ", survived)));
             }
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
