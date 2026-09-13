@@ -28,6 +28,7 @@ public static class CommandCatalog
         yield return new MountCommand();
         yield return new UnmountCommand();
         yield return new ListCommand();
+        yield return new ProjectCommand();
         yield return new HelpCommand();
         yield return new VersionCommand();
     }
