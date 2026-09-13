@@ -592,6 +592,67 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
         public void Dispose() => Stop();
 
         /// <summary>
+        /// Deletes a file or a whole directory, clearing the read-only attribute on
+        /// the way.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Every projected item is marked read-only</b> - see
+        /// <c>BasicInfoFor</c>, which is honest about a projection that never writes
+        /// back. ProjFS puts that attribute on the placeholders and hydrated files it
+        /// materialises, and <see cref="Directory.Delete(string, bool)"/> refuses the
+        /// moment it meets one, with <see cref="UnauthorizedAccessException"/> naming
+        /// a descendant rather than the directory that was asked for.
+        /// </para>
+        /// <para>
+        /// So the attribute has to come off before the delete. Plain files at the top
+        /// of the root were removed happily by the previous version while every
+        /// directory holding hydrated content failed, which is what "mostly cleared"
+        /// meant.
+        /// </para>
+        /// <para>
+        /// Each level's entries are materialised before any of them are deleted, for
+        /// the same reason the top level does it: enumerating a directory lazily
+        /// while deleting out of it skips entries or throws part way through.
+        /// </para>
+        /// </remarks>
+        private static void DeleteTree(string path)
+        {
+            if (Directory.Exists(path))
+            {
+                foreach (string child in (string[])[.. Directory.EnumerateFileSystemEntries(path)])
+                {
+                    DeleteTree(child);
+                }
+
+                DirectoryInfo directory = new(path);
+
+                if (directory.Attributes.HasFlag(FileAttributes.ReadOnly))
+                {
+                    directory.Attributes &= ~FileAttributes.ReadOnly;
+                }
+
+                Directory.Delete(path, recursive: false);
+
+                return;
+            }
+
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            FileInfo file = new(path);
+
+            if (file.IsReadOnly)
+            {
+                file.IsReadOnly = false;
+            }
+
+            file.Delete();
+        }
+
+        /// <summary>
         /// Removes what the projection left on disk.
         /// </summary>
         /// <remarks>
@@ -654,14 +715,7 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
 
                     try
                     {
-                        if (Directory.Exists(entry))
-                        {
-                            Directory.Delete(entry, recursive: true);
-                        }
-                        else
-                        {
-                            File.Delete(entry);
-                        }
+                        DeleteTree(entry);
                     }
                     catch (Exception exception) when (
                         exception is IOException or UnauthorizedAccessException)
