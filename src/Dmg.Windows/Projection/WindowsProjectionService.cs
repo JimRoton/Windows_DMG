@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Dmg.Core;
 using Dmg.Core.Projection;
+using Dmg.Core.Vhd;
 
 namespace Dmg.Windows.Projection;
 
@@ -104,9 +105,9 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
             return available.CastFailure<IProjectionSession>();
         }
 
-        Result prepared = PrepareRoot(options.RootPath);
+        Result<bool> prepared = PrepareRoot(options.RootPath);
 
-        if (!prepared.Ok)
+        if (!prepared.TryGetValue(out bool rootCreated))
         {
             return prepared.CastFailure<IProjectionSession>();
         }
@@ -176,18 +177,23 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
         instance.Context = context;
 
         return Result<IProjectionSession>.Success(
-            new WindowsProjectionSession(options, token, context));
+            new WindowsProjectionSession(options, token, context, rootCreated));
     }
 
     /// <summary>
     /// Makes sure the root exists and is empty, which ProjFS requires and which is
     /// worth refusing early rather than as an HRESULT.
     /// </summary>
-    private static Result PrepareRoot(string rootPath)
+    /// <returns>
+    /// True when this call created the directory, false when it adopted one that
+    /// was already there and empty. That decides what cleanup may remove: a folder
+    /// dmg made is dmg's to delete, and one the user made is theirs to keep.
+    /// </returns>
+    private static Result<bool> PrepareRoot(string rootPath)
     {
         if (string.IsNullOrWhiteSpace(rootPath))
         {
-            return Result.Failure(DmgError.Usage(
+            return Result<bool>.Failure(DmgError.Usage(
                 "A projection needs a directory to appear under.",
                 "No root path was given."));
         }
@@ -196,7 +202,7 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
         {
             if (File.Exists(rootPath))
             {
-                return Result.Failure(DmgError.Usage(
+                return Result<bool>.Failure(DmgError.Usage(
                     $"'{rootPath}' is a file, not a directory.",
                     "A projection root has to be a folder."));
             }
@@ -205,23 +211,23 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
             {
                 if (Directory.EnumerateFileSystemEntries(rootPath).Any())
                 {
-                    return Result.Failure(DmgError.Usage(
+                    return Result<bool>.Failure(DmgError.Usage(
                         $"'{rootPath}' already has files in it. A projection root must be empty, "
                         + "so that everything appearing there comes from the image.",
                         "Choose an empty folder, or one that does not exist yet."));
                 }
-            }
-            else
-            {
-                Directory.CreateDirectory(rootPath);
+
+                return Result<bool>.Success(false);
             }
 
-            return Result.Success();
+            Directory.CreateDirectory(rootPath);
+
+            return Result<bool>.Success(true);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
-            return Result.Failure(DmgError.Usage(
+            return Result<bool>.Failure(DmgError.Usage(
                 $"'{rootPath}' cannot be used as a projection root.",
                 exception.Message));
         }
@@ -553,7 +559,8 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
     private sealed class WindowsProjectionSession(
         ProjectionOptions options,
         nint token,
-        SafeProjectionContextHandle context) : IProjectionSession
+        SafeProjectionContextHandle context,
+        bool rootCreated) : IProjectionSession
     {
         private bool _stopped;
 
@@ -577,9 +584,87 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
             context.Dispose();
             Instances.TryRemove(token, out _);
 
-            return Result.Success();
+            // Only now. Deleting while ProjFS is still serving the root invites it
+            // to materialise the very entries being removed.
+            return Cleanup();
         }
 
         public void Dispose() => Stop();
+
+        /// <summary>
+        /// Removes what the projection left on disk.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// ProjFS leaves a placeholder for every item that was looked at and a full
+        /// copy of every file that was opened, and none of that goes away when the
+        /// projection stops. For an encrypted image those copies are plaintext, so
+        /// this is not tidying - it is the difference between serving an image
+        /// without copying it and quietly decrypting parts of it onto the user's
+        /// disk.
+        /// </para>
+        /// <para>
+        /// Every entry is checked with <see cref="ScratchLayout.IsWithin"/> before
+        /// it is deleted, the same guard the scratch directory uses. The root itself
+        /// is removed only when dmg created it: adopting a folder the user made and
+        /// then deleting it would be a surprise, so that one is emptied and left.
+        /// </para>
+        /// <para>
+        /// A failure here is reported as a failure, not swallowed. "The projection
+        /// stopped but there is still decrypted content in that folder" is
+        /// something the user has to be told.
+        /// </para>
+        /// </remarks>
+        private Result Cleanup()
+        {
+            if (options.KeepContents)
+            {
+                return Result.Success();
+            }
+
+            try
+            {
+                if (!Directory.Exists(options.RootPath))
+                {
+                    return Result.Success();
+                }
+
+                foreach (string entry in Directory.EnumerateFileSystemEntries(options.RootPath))
+                {
+                    if (!ScratchLayout.IsWithin(options.RootPath, entry))
+                    {
+                        return Result.Failure(DmgError.Internal(
+                            "Refusing to delete something that is not inside the projection root.",
+                            $"root '{options.RootPath}', entry '{entry}'"));
+                    }
+
+                    if (Directory.Exists(entry))
+                    {
+                        Directory.Delete(entry, recursive: true);
+                    }
+                    else
+                    {
+                        File.Delete(entry);
+                    }
+                }
+
+                if (rootCreated)
+                {
+                    Directory.Delete(options.RootPath, recursive: false);
+                }
+
+                return Result.Success();
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return Result.Failure(new DmgError(
+                    DmgExitCode.MountFailed,
+                    $"The projection stopped, but '{options.RootPath}' could not be cleared. "
+                    + "Anything that was opened while it ran is still there, decrypted. Close "
+                    + "whatever is using that folder and delete it by hand.",
+                    exception.Message));
+            }
+        }
     }
 }

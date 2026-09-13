@@ -16,7 +16,24 @@ namespace Dmg.Windows.Projection;
 /// path - see <c>MountId</c> for why nothing out of an image reaches the
 /// filesystem.
 /// </param>
-public sealed record ProjectionOptions(string RootPath, string? VolumeLabel = null);
+/// <param name="KeepContents">
+/// True to leave behind whatever the projection materialised, instead of removing
+/// it when the projection stops.
+/// </param>
+/// <remarks>
+/// <b>Why stopping deletes by default.</b> ProjFS writes an on-disk placeholder
+/// for every item that is looked at, and a full copy of every file that is opened.
+/// For an encrypted image that means plaintext: browse a few folders and open a
+/// file, and the decrypted contents of someone's encrypted disk image are sitting
+/// in an ordinary directory after the projection has stopped. Leaving that behind
+/// would undo the one thing this route exists to do - serve an image without
+/// copying it - so the default is to clean up, and keeping it is the deliberate
+/// choice.
+/// </remarks>
+public sealed record ProjectionOptions(
+    string RootPath,
+    string? VolumeLabel = null,
+    bool KeepContents = false);
 
 /// <summary>
 /// A running projection. Disposing it stops the projection and leaves the root

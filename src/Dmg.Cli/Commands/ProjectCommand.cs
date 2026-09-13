@@ -91,6 +91,10 @@ public sealed class ProjectCommand : ICliCommand
                 "password-env",
                 "Read the passphrase from an environment variable.",
                 ValueName: "VAR"),
+            new OptionSpec(
+                "keep",
+                "Leave whatever was opened behind when the projection stops, instead of "
+                + "removing it."),
             CacheOption.Spec,
         ],
         ["IMAGE", "FOLDER"],
@@ -98,7 +102,9 @@ public sealed class ProjectCommand : ICliCommand
             "Nothing is copied. The folder's contents are served from the image as they are "
             + "asked for, so this starts in about the same time whatever the image's size.",
             "The folder must be empty, or not exist yet. Everything in it comes from the image.",
-            "Runs until you press Ctrl+C. The folder is emptied when it stops.",
+            "Runs until you press Ctrl+C. Windows keeps a copy of everything that gets opened "
+            + "while it runs - decrypted, for an encrypted image - so stopping clears the folder "
+            + "out again. Pass --keep to leave it.",
             "exFAT volumes only, and read-only. For a drive letter, or for FAT32, use 'dmg mount'.",
             "Needs the Windows Projected File System, an optional Windows feature. dmg says so, "
             + "and how to enable it, if it is switched off.",
@@ -171,7 +177,14 @@ public sealed class ProjectCommand : ICliCommand
             return passphraseOptions.Error.Code;
         }
 
-        return Project(context, imagePath, rootPath, partitionNumber, cacheCapacityBytes, options);
+        return Project(
+            context,
+            imagePath,
+            rootPath,
+            partitionNumber,
+            cacheCapacityBytes,
+            options,
+            arguments.Has("keep"));
     }
 
     /// <summary>Opens the image, finds the volume, and serves it until stopped.</summary>
@@ -181,7 +194,8 @@ public sealed class ProjectCommand : ICliCommand
         string rootPath,
         int? partitionNumber,
         long? cacheCapacityBytes,
-        PassphraseOptions passphraseOptions)
+        PassphraseOptions passphraseOptions,
+        bool keepContents)
     {
         Passphrase? passphrase = null;
 
@@ -215,7 +229,7 @@ public sealed class ProjectCommand : ICliCommand
 
             using (image)
             {
-                return Serve(context, image, imagePath, rootPath, partitionNumber);
+                return Serve(context, image, imagePath, rootPath, partitionNumber, keepContents);
             }
         }
         finally
@@ -230,7 +244,8 @@ public sealed class ProjectCommand : ICliCommand
         OpenedImage image,
         string imagePath,
         string rootPath,
-        int? partitionNumber)
+        int? partitionNumber,
+        bool keepContents)
     {
         Result<VolumeMap> read = VolumeMap.Read(image.Disk);
 
@@ -274,7 +289,10 @@ public sealed class ProjectCommand : ICliCommand
             return reader.Error.Code;
         }
 
-        ProjectionOptions projectionOptions = new(rootPath, volume.Filesystem.VolumeLabel);
+        ProjectionOptions projectionOptions = new(
+            rootPath,
+            volume.Filesystem.VolumeLabel,
+            KeepContents: keepContents);
 
         Result<IProjectionSession> started = _projections.Start(
             projectionOptions,
@@ -303,7 +321,10 @@ public sealed class ProjectCommand : ICliCommand
             }
         }
 
-        context.Output.WriteLine($"Stopped. '{rootPath}' is empty again.");
+        context.Output.WriteLine(keepContents
+            ? $"Stopped. Whatever was opened is still in '{rootPath}' - decrypted, if the image "
+                + "was. Delete it when you are done with it."
+            : $"Stopped, and '{rootPath}' cleared.");
 
         return DmgExitCode.Success;
     }
