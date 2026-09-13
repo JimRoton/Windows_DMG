@@ -46,15 +46,22 @@ public sealed class SynchronizedProjectedContentTests
         // Proves the detector detects. If this ever stops overlapping, the test
         // above has become vacuous and would pass with the decorator's locks gone.
         //
-        // The overlap is arranged, not raced for. An earlier version of this test
-        // simply hammered the content from several threads and trusted them to
-        // interleave; that passed alone and failed under full-suite load, which is
-        // the worst outcome a test can have - people learn to re-run it rather than
-        // believe it. Here the first caller in waits on a rendezvous until a second
-        // one arrives, so the overlap is a certainty rather than a probability.
+        // The overlap is arranged, not raced for - and it is arranged on threads
+        // this test starts itself.
+        //
+        // Two earlier versions got this wrong. The first hammered the content from
+        // a thread pool and trusted the threads to interleave. The second used a
+        // rendezvous but drove it with Parallel.For(0, 2, ...), which is free to
+        // run both iterations inline on one thread: caller one signals, waits,
+        // times out, returns, and only then does caller two arrive. Nobody
+        // overlaps, and the test fails having proved nothing. Both passed alone and
+        // failed under full-suite load, which is the worst way for a test to be
+        // wrong.
+        //
+        // Real threads are what makes the countdown complete by construction.
         using RendezvousContent inner = new(expected: 2);
 
-        Parallel.For(0, 2, _ => inner.Find("anything"));
+        RunOnTwoThreads(() => inner.Find("anything"));
 
         Assert.True(
             inner.SawOverlap,
@@ -72,7 +79,7 @@ public sealed class SynchronizedProjectedContentTests
         using RendezvousContent inner = new(expected: 2);
         SynchronizedProjectedContent content = new(inner);
 
-        Parallel.For(0, 2, _ => content.Find("anything"));
+        RunOnTwoThreads(() => content.Find("anything"));
 
         Assert.False(
             inner.SawOverlap,
@@ -101,6 +108,30 @@ public sealed class SynchronizedProjectedContentTests
     [Fact]
     public void WrappingNothingIsRejected() =>
         Assert.Throws<ArgumentNullException>(() => new SynchronizedProjectedContent(null!));
+
+    /// <summary>
+    /// Runs <paramref name="body"/> on two threads this test owns, and waits for
+    /// both.
+    /// </summary>
+    /// <remarks>
+    /// Explicit <see cref="Thread"/>s rather than <see cref="Parallel"/> or the
+    /// thread pool. Both of those are free to decide that two work items are
+    /// cheapest run one after another on the caller's thread, and a rendezvous
+    /// between two callers that are never concurrent cannot complete. Here there
+    /// are unambiguously two threads, so a test about what happens when two callers
+    /// meet is actually testing that.
+    /// </remarks>
+    private static void RunOnTwoThreads(Action body)
+    {
+        Thread first = new(() => body()) { IsBackground = true };
+        Thread second = new(() => body()) { IsBackground = true };
+
+        first.Start();
+        second.Start();
+
+        Assert.True(first.Join(TimeSpan.FromSeconds(10)), "The first caller never finished.");
+        Assert.True(second.Join(TimeSpan.FromSeconds(10)), "The second caller never finished.");
+    }
 
     private static void Hammer(IProjectedContent content)
     {
