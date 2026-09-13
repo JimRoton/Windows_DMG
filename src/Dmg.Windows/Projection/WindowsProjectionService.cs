@@ -629,7 +629,14 @@ public sealed unsafe class WindowsProjectionService : IProjectionService
                     return Result.Success();
                 }
 
-                foreach (string entry in Directory.EnumerateFileSystemEntries(options.RootPath))
+                // Materialised before anything is deleted. EnumerateFileSystemEntries
+                // walks the directory lazily, so deleting inside the loop mutates
+                // what is still being read - which skips entries, or throws part way
+                // through, either of which leaves files behind while looking like it
+                // worked.
+                string[] entries = [.. Directory.EnumerateFileSystemEntries(options.RootPath)];
+
+                foreach (string entry in entries)
                 {
                     if (!ScratchLayout.IsWithin(options.RootPath, entry))
                     {
