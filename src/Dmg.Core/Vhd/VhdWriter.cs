@@ -263,7 +263,8 @@ public static class VhdWriter
         VhdWriteOptions? options = null,
         IProgress<VhdWriteProgress>? progress = null,
         IVhdSparseMap? sparseMap = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IVhdDiscardableMap? discardableMap = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -350,7 +351,8 @@ public static class VhdWriter
             settings,
             ref reporter,
             sparseMap,
-            cancellationToken);
+            cancellationToken,
+            discardableMap);
     }
 
     /// <summary>
@@ -382,7 +384,8 @@ public static class VhdWriter
         IProgress<VhdWriteProgress>? progress = null,
         IFreeSpaceProbe? freeSpaceProbe = null,
         IVhdSparseMap? sparseMap = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IVhdDiscardableMap? discardableMap = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -396,7 +399,7 @@ public static class VhdWriter
             return measured.CastFailure<VhdWriteResult>();
         }
 
-        Result<long> sized = DynamicFileSizeFor(sourceLength, settings.BlockSize, sparseMap);
+        Result<long> sized = DynamicFileSizeFor(sourceLength, settings.BlockSize, sparseMap, discardableMap);
 
         if (!sized.TryGetValue(out long fileSize))
         {
@@ -412,7 +415,7 @@ public static class VhdWriter
             // the space straight back to the filesystem's allocator.
             preallocationSize: 0,
             freeSpaceProbe,
-            destination => WriteDynamic(source, destination, settings, progress, sparseMap, cancellationToken));
+            destination => WriteDynamic(source, destination, settings, progress, sparseMap, cancellationToken, discardableMap));
     }
 
     /// <summary>
@@ -430,15 +433,22 @@ public static class VhdWriter
         VhdWriteOptions? options = null,
         IProgress<VhdWriteProgress>? progress = null,
         IVhdSparseMap? sparseMap = null,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        IVhdDiscardableMap? discardableMap = null) =>
         (options ?? VhdWriteOptions.Default).DiskType == VhdDiskType.Dynamic
-            ? WriteDynamic(source, destination, options, progress, sparseMap, cancellationToken)
+            ? WriteDynamic(source, destination, options, progress, sparseMap, cancellationToken, discardableMap)
             : WriteFixed(source, destination, options, progress, cancellationToken);
 
     /// <summary>
     /// Writes a fixed or a dynamic VHD to a file according to
     /// <see cref="VhdWriteOptions.DiskType"/>, with the free-space precheck.
     /// </summary>
+    /// <param name="discardableMap">
+    /// Ranges the caller has decided need not be written even though they are not
+    /// known to be zeros - a filesystem's free space. See
+    /// <see cref="IVhdDiscardableMap"/>: supplying one produces a disk that is not
+    /// a faithful copy of the source, so <c>extract</c> and <c>verify</c> never do.
+    /// </param>
     public static Result<VhdWriteResult> WriteToFile(
         Stream source,
         string path,
@@ -446,9 +456,10 @@ public static class VhdWriter
         IProgress<VhdWriteProgress>? progress = null,
         IFreeSpaceProbe? freeSpaceProbe = null,
         IVhdSparseMap? sparseMap = null,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        IVhdDiscardableMap? discardableMap = null) =>
         (options ?? VhdWriteOptions.Default).DiskType == VhdDiskType.Dynamic
-            ? WriteDynamicToFile(source, path, options, progress, freeSpaceProbe, sparseMap, cancellationToken)
+            ? WriteDynamicToFile(source, path, options, progress, freeSpaceProbe, sparseMap, cancellationToken, discardableMap)
             : WriteFixedToFile(source, path, options, progress, freeSpaceProbe, cancellationToken);
 
     /// <summary>
@@ -467,7 +478,8 @@ public static class VhdWriter
     public static Result<long> DynamicFileSizeFor(
         long payloadBytes,
         int blockSize = VhdDynamicHeader.DefaultBlockSize,
-        IVhdSparseMap? sparseMap = null)
+        IVhdSparseMap? sparseMap = null,
+        IVhdDiscardableMap? discardableMap = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(payloadBytes);
 
@@ -478,7 +490,7 @@ public static class VhdWriter
             return planned.CastFailure<long>();
         }
 
-        if (sparseMap is null)
+        if (sparseMap is null && discardableMap is null)
         {
             return Result<long>.Success(layout.MaximumFileSize);
         }
@@ -487,7 +499,13 @@ public static class VhdWriter
 
         for (uint index = 0; index < layout.BlockCount; index++)
         {
-            if (!sparseMap.IsKnownZero((long)index * layout.BlockSize, layout.DiskBytesInBlock(index)))
+            long blockStart = (long)index * layout.BlockSize;
+            long inBlock = layout.DiskBytesInBlock(index);
+
+            bool skipped = (sparseMap is not null && sparseMap.IsKnownZero(blockStart, inBlock))
+                || (discardableMap is not null && discardableMap.MayDiscard(blockStart, inBlock));
+
+            if (!skipped)
             {
                 allocatable++;
             }
@@ -869,7 +887,8 @@ public static class VhdWriter
         VhdWriteOptions settings,
         ref ProgressReporter reporter,
         IVhdSparseMap? sparseMap,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IVhdDiscardableMap? discardableMap)
     {
         uint[] table = new uint[layout.BlockCount];
 
@@ -928,10 +947,16 @@ public static class VhdWriter
                 long blockStart = (long)index * blockSize;
                 int inBlock = (int)layout.DiskBytesInBlock(index);
 
-                if (sparseMap is not null && sparseMap.IsKnownZero(blockStart, inBlock))
+                if ((sparseMap is not null && sparseMap.IsKnownZero(blockStart, inBlock))
+                    || (discardableMap is not null && discardableMap.MayDiscard(blockStart, inBlock)))
                 {
                     // Never read, never decompressed, never written. This is where a
                     // mostly-empty image stops costing anything.
+                    //
+                    // The two maps answer different questions - certainly zeros, and
+                    // the filesystem is not using it - and only the second produces a
+                    // disk that differs from its source. See IVhdDiscardableMap for
+                    // why that is acceptable for a mount and not for a conversion.
                     reporter.Advance(inBlock);
                     continue;
                 }

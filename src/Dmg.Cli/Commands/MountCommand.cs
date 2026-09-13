@@ -354,10 +354,31 @@ public sealed class MountCommand : ICliCommand
             ? new OffsetSparseMap(DmgSparseMap.For(blockStream), volume.ByteOffset)
             : null;
 
+        // And the volume's own free space, which is a different question again. The
+        // sparse map above says "the image stores nothing here"; this says "the
+        // filesystem is not using this cluster", which is true of far more of a
+        // real disk and is the only thing that makes a nearly-empty terabyte
+        // volume mountable at all. It produces a disk that is not byte-identical to
+        // the source - see IVhdDiscardableMap - which is why it is built here and
+        // never in 'extract'.
+        //
+        // No offset shim: the bitmap measures from the start of the volume, and the
+        // volume is exactly what gets written, so its coordinates and the writer's
+        // are already the same.
+        IVhdDiscardableMap? discardableMap = dynamic
+            ? FreeSpaceMapFor(context, image, volume)
+            : null;
+
         try
         {
             Result room = dynamic
-                ? RequireDynamicRoom(scratch, volume.ByteLength, writeOptions.BlockSize, sparseMap, _freeSpaceProbe)
+                ? RequireDynamicRoom(
+                    scratch,
+                    volume.ByteLength,
+                    writeOptions.BlockSize,
+                    sparseMap,
+                    _freeSpaceProbe,
+                    discardableMap)
                 : scratch.EnsureRoomFor(volume.ByteLength, _freeSpaceProbe);
 
             if (!room.Ok)
@@ -388,7 +409,8 @@ public sealed class MountCommand : ICliCommand
                 progress: new Progress<VhdWriteProgress>(
                     update => progress.Report(update.BytesWritten, update.TotalBytes)),
                 freeSpaceProbe: _freeSpaceProbe,
-                sparseMap: sparseMap);
+                sparseMap: sparseMap,
+                discardableMap: discardableMap);
 
             if (!written.Ok)
             {
@@ -522,13 +544,80 @@ public sealed class MountCommand : ICliCommand
         long payloadBytes,
         int blockSize,
         IVhdSparseMap? sparseMap,
-        IFreeSpaceProbe? probe)
+        IFreeSpaceProbe? probe,
+        IVhdDiscardableMap? discardableMap)
     {
-        Result<long> sized = VhdWriter.DynamicFileSizeFor(payloadBytes, blockSize, sparseMap);
+        Result<long> sized = VhdWriter.DynamicFileSizeFor(
+            payloadBytes,
+            blockSize,
+            sparseMap,
+            discardableMap);
 
         return sized.TryGetValue(out long required)
             ? FreeSpaceCheck.Require(scratch.VhdPath, required, probe)
             : sized.Discard();
+    }
+
+    /// <summary>
+    /// The volume's own free space, as something the dynamic writer may skip - or
+    /// null when this volume cannot supply it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only exFAT, because the allocation bitmap is the only free-space map this
+    /// build knows how to read. Every other filesystem falls back to writing
+    /// everything, which is what it did before this existed.
+    /// </para>
+    /// <para>
+    /// <b>Every failure here is null, not an error.</b> A volume whose bitmap will
+    /// not parse is a volume that gets mounted the slow way; refusing the mount
+    /// because an optimisation was unavailable would be a poor trade. The reason is
+    /// traced so that a mount which unexpectedly writes the whole disk can be
+    /// explained afterwards.
+    /// </para>
+    /// <para>
+    /// The reader is opened over a window on the same volume the writer will write,
+    /// so the bitmap's offsets and the writer's are the same coordinates. Reading
+    /// the bitmap costs a boot sector, some FAT, and the root directory - a few
+    /// hundred kilobytes against the terabyte it can save.
+    /// </para>
+    /// </remarks>
+    private static IVhdDiscardableMap? FreeSpaceMapFor(CliContext context, OpenedImage image, DiskVolume volume)
+    {
+        if (volume.Filesystem.Kind != FilesystemKind.ExFat)
+        {
+            context.Output.Trace(
+                $"No free-space map: partition {volume.Number} is {volume.Filesystem.Name}, "
+                + "and only exFAT publishes one this build can read.");
+
+            return null;
+        }
+
+        Result<ExFatReader> opened = ExFatReader.Open(image.Disk, volume.ByteOffset, volume.ByteLength);
+
+        if (!opened.TryGetValue(out ExFatReader? reader))
+        {
+            context.Output.Trace($"No free-space map: {opened.Error.Message}");
+
+            return null;
+        }
+
+        Result<ExFatAllocationBitmap?> bitmap = reader.ReadAllocationBitmap();
+
+        if (!bitmap.TryGetValue(out ExFatAllocationBitmap? allocation) || allocation is null)
+        {
+            context.Output.Trace(bitmap.Ok
+                ? "No free-space map: this volume declares no allocation bitmap."
+                : $"No free-space map: {bitmap.Error.Message}");
+
+            return null;
+        }
+
+        ExFatAllocationMap map = new(allocation);
+
+        context.Output.Trace($"Free-space map: {map}");
+
+        return map;
     }
 
     /// <summary>
