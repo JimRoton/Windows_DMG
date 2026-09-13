@@ -93,15 +93,28 @@ internal static partial class ProjFsNative
         internal fixed byte ContentID[128];
     }
 
-    /// <summary><c>PRJ_PLACEHOLDER_INFO</c>, without its variable-length tail.</summary>
+    /// <summary><c>PRJ_PLACEHOLDER_INFO</c>.</summary>
     /// <remarks>
-    /// The real structure ends with a <c>VariableData[1]</c> flexible array for
-    /// extended attributes, a security descriptor and stream information. None of
-    /// those are supplied here - the three size fields are left zero, which tells
-    /// ProjFS to use the defaults - so the fixed part is the whole of what is sent.
+    /// <para>
+    /// The structure ends with a <c>VariableData[1]</c> flexible array for extended
+    /// attributes, a security descriptor and stream information. None of those are
+    /// supplied here - the three size fields are left zero, which tells ProjFS to
+    /// use the defaults - but <b>the trailing member still has to be declared</b>.
+    /// </para>
+    /// <para>
+    /// <b>Leaving it out is a bug, and an obscure one.</b> ProjFS checks the size it
+    /// is given against its own <c>sizeof(PRJ_PLACEHOLDER_INFO)</c>. Without the
+    /// trailing byte and its alignment padding this struct measures 336 bytes where
+    /// the native one is 344, so every <c>PrjWritePlaceholderInfo</c> is refused
+    /// with <c>ERROR_INSUFFICIENT_BUFFER</c> - which Explorer reports as "the data
+    /// area passed to a system call is too small". Directory listings still work,
+    /// because <c>PrjFillDirEntryBuffer</c> takes no size, so the projection looks
+    /// correct until something is opened. Both figures were measured, not reasoned
+    /// about, after the first version of this file got it wrong.
+    /// </para>
     /// </remarks>
     [StructLayout(LayoutKind.Sequential)]
-    internal struct PrjPlaceholderInfo
+    internal unsafe struct PrjPlaceholderInfo
     {
         internal PrjFileBasicInfo FileBasicInfo;
         internal uint EaBufferSize;
@@ -111,6 +124,7 @@ internal static partial class ProjFsNative
         internal uint StreamsInfoBufferSize;
         internal uint OffsetToFirstStreamInfo;
         internal PrjPlaceholderVersionInfo VersionInfo;
+        internal fixed byte VariableData[1];
     }
 
     /// <summary><c>PRJ_CALLBACK_DATA</c>: what every callback is told about the request.</summary>
